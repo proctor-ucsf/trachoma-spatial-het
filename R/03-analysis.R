@@ -63,7 +63,7 @@ spatial_models_fit <- variograms_meta %>%
          error_type = map_chr(models, ~if(!is.null(.x$error)) .x$error else NA_character_)) 
 
 spatial_models <- spatial_models_fit %>%
-  mutate(across(c(starts_with("marg_aic"), warnings), ~unlist(.x))) %>%
+  mutate(across(c(starts_with("marg_aic")), ~unlist(.x))) %>%
   mutate(spatial_fit_yn = ifelse(!map_lgl(spatial_model, is.null), "yes", "no"),
          simple_fit_yn = ifelse(!map_lgl(simple_model, is.null), "yes", "no"),
          fit_yn = case_when(

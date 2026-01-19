@@ -347,17 +347,17 @@ fit_spatial_model <- function(dist, mrk, df) {
   # Keep warnings but don't treat as failure
   warn_spatial <- character(0)
   fit_spatial <- tryCatch(
-    withCallingHandlers(
       spaMM::fitme(
         prev ~ 1 + Matern(1 | lon + lat),
         data = subset_data,
-        family = gaussian()
+        family = gaussian(link = "identity")
       ),
       warning = function(w) {
-        warn_spatial <<- c(warn_spatial, conditionMessage(w))
-        invokeRestart("muffleWarning")
-      }
-    ),
+        # warn_spatial <<- c(warn_spatial, conditionMessage(w))
+        # invokeRestart("muffleWarning")
+        warning(sprintf("Spatial model warned for %s - %s: %s", dist, mrk, w$message))
+        NULL
+      },
     error = function(e) {
       warning(sprintf("Spatial model failed for %s - %s: %s", dist, mrk, e$message))
       NULL
@@ -366,17 +366,17 @@ fit_spatial_model <- function(dist, mrk, df) {
   
   warn_simple <- character(0)
   fit_simple <- tryCatch(
-    withCallingHandlers(
       spaMM::fitme(
         prev ~ 1,
         data = subset_data,
-        family = gaussian()
+        family = gaussian(link = "identity")
       ),
       warning = function(w) {
-        warn_simple <<- c(warn_simple, conditionMessage(w))
-        invokeRestart("muffleWarning")
-      }
-    ),
+        # warn_simple <<- c(warn_simple, conditionMessage(w))
+        # invokeRestart("muffleWarning")
+        warning(sprintf("Spatial model warned for %s - %s: %s", dist, mrk, w$message))
+        NULL
+      },
     error = function(e) {
       warning(sprintf("Nonspatial model failed for %s - %s: %s", dist, mrk, e$message))
       NULL
