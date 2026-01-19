@@ -23,6 +23,7 @@ library(sf)
 library(raster)
 library(spaMM)
 library(gstat)
+library(spdep)
 
 library(countrycode)
 library(geodata)

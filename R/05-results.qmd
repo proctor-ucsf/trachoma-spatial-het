@@ -33,10 +33,30 @@ districts_tib <- readRDS(here("data", "clean", "districts_tib.rds"))
 amhara_shp <- readRDS(here("data", "clean", "amhara_shp.rds"))
 
 # Load results
+morans_results <- readRDS(here("data", "clean", "morans_i_results.rds"))
 variograms <- readRDS(here("data", "clean", "variograms.rds"))
 spatial_models <- readRDS(here("data", "clean", "spatial_models.rds"))
 spatial_preds <- readRDS(here("data", "clean", "spatial_preds.rds"))
 ```
+
+```{r morans-summary, message=FALSE, warning=FALSE, fig.width=9, fig.height=6}
+
+morans_results <- morans_results %>%
+  left_join(districts_tib)
+
+ggplot(morans_results) +
+  geom_point(aes(x = district_n, y = morans_I, color = as.factor(k)), 
+             size = 2, alpha = 0.6) +
+  geom_hline(aes(yintercept = 0), linetype = "dashed") +
+  facet_wrap(~ marker, ncol = 1) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom",
+        axis.title.x = element_blank()) +
+  labs(y = "Moran's I") +
+  scale_color_discrete(name = "Number of neighbors (k)")
+
+```
+
 
 ```{r variograms-prep, message=FALSE, warning=FALSE}
 

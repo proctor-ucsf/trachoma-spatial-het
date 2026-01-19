@@ -10,6 +10,46 @@ collect_warnings <- function(expr) {
   list(value = val, warnings = unique(warns))
 }
 
+# Moran's I ----
+
+compute_morans_i <- function(df, k = 5, nsim = 999) {
+  
+  # Need at least k + 1 points
+  if (nrow(df) <= k) {
+    return(tibble(
+      morans_I = NA_real_,
+      p_value  = NA_real_,
+      n        = nrow(df)
+    ))
+  }
+  
+  coords <- as.matrix(df[, c("lon", "lat")])
+  
+  # k-nearest neighbors
+  knn <- knearneigh(coords, k = k)
+  nb  <- knn2nb(knn)
+  
+  # Row-standardized weights
+  lw <- nb2listw(nb, style = "W", zero.policy = TRUE)
+  
+  # Monte Carlo Moran's I
+  mi <- moran.mc(
+    x = df$prev,
+    listw = lw,
+    nsim = nsim,
+    zero.policy = TRUE
+  )
+  
+  tibble(
+    morans_I = unname(mi$statistic),
+    p_value  = mi$p.value,
+    n        = nrow(df)
+  )
+}
+
+
+# Variograms ----
+
 empty_variogram_result <- function(dist_i,
                                    mrk,
                                    n_points,
@@ -323,6 +363,43 @@ get_variogram_predictions <- function(var_mat, var_sph, maxdist) {
     mutate(model = label)
 }
 
+extract_best_name_and_range <- function(fit) {
+  if (is.null(fit$best) || nrow(fit$diagnostics) == 0) {
+    return(tibble(
+      best_fit_name = NA_character_,
+      best_range = NA_real_
+    ))
+  }
+  
+  # 1. Identify the winning row from diagnostics
+  best_row <- fit$diagnostics %>%
+    filter(ok, is.finite(SSErr)) %>%
+    slice(1)
+  
+  best_fit_name <- paste0(
+    best_row$model,
+    "_method",
+    best_row$fit_method
+  )
+  
+  # 2. Extract range from the fitted variogram (non-nugget component)
+  bf <- as_tibble(fit$best) %>%
+    mutate(model = as.character(model))
+  
+  best_range <- bf %>%
+    filter(model != "Nug") %>%
+    pull(range) %>%
+    { if (length(.) == 0) NA_real_ else as.numeric(.[1]) }
+  
+  tibble(
+    best_fit_name = best_fit_name,
+    best_range = best_range
+  )
+}
+
+
+# Spatial models ----
+
 fit_spatial_model <- function(dist, mrk, df) {
   
   subset_data <- df %>%
@@ -445,7 +522,6 @@ create_district_grid <- function(dist_shp_name, shapefile, data, districts_looku
   return(grid_within)
 }
 
-
 # Function to get spatial predictions on a grid
 get_grid_preds <- function(input_grid, spamm_model_fit) {
   # Convert grid to data frame
@@ -462,6 +538,40 @@ get_grid_preds <- function(input_grid, spamm_model_fit) {
   grid_df$pred <- preds[,1]
   st_as_sf(grid_df, coords = c("lon", "lat"), crs = 4326)
 }
+
+get_predictions_for_model <- function(dist, mrk, model, grid_data) {
+  if(is.null(model)) return(NULL)
+  
+  study_grid <- grid_data %>%
+    filter(district == dist) %>%
+    pull(grid) %>%
+    .[[1]]
+  
+  preds_sf <- tryCatch(
+    get_grid_preds(study_grid, model),
+    error = function(e) {
+      warning(paste0("Prediction failed for ", district, " - ", mrk, ": ", e$message))
+      return(NULL)
+    }
+  )
+  
+  if(is.null(preds_sf)) return(NULL)
+  
+  # Convert to raster then tibble
+  preds_coords <- st_coordinates(preds_sf)
+  
+  pred_tibble <- tibble(
+    x = preds_coords[,1],
+    y = preds_coords[,2],
+    value = preds_sf$pred,  # Convert to percentage
+    district = dist,
+    marker = mrk
+  )
+  
+  return(pred_tibble)
+}
+
+# Mapping functions ----
 
 # Function to convert points to raster
 points_to_raster <- function(x, y, z, mask1, crop1) {
@@ -499,71 +609,5 @@ get_country_boundaries <- function(country_name) {
   library(rnaturalearthdata)
   
   ne_countries(scale = "medium", country = country_name, returnclass = "sf")
-}
-
-get_predictions_for_model <- function(dist, mrk, model, grid_data) {
-  if(is.null(model)) return(NULL)
-  
-  study_grid <- grid_data %>%
-    filter(district == dist) %>%
-    pull(grid) %>%
-    .[[1]]
-  
-  preds_sf <- tryCatch(
-    get_grid_preds(study_grid, model),
-    error = function(e) {
-      warning(paste0("Prediction failed for ", district, " - ", mrk, ": ", e$message))
-      return(NULL)
-    }
-  )
-  
-  if(is.null(preds_sf)) return(NULL)
-  
-  # Convert to raster then tibble
-  preds_coords <- st_coordinates(preds_sf)
-  
-  pred_tibble <- tibble(
-    x = preds_coords[,1],
-    y = preds_coords[,2],
-    value = preds_sf$pred,  # Convert to percentage
-    district = dist,
-    marker = mrk
-  )
-  
-  return(pred_tibble)
-}
-
-extract_best_name_and_range <- function(fit) {
-  if (is.null(fit$best) || nrow(fit$diagnostics) == 0) {
-    return(tibble(
-      best_fit_name = NA_character_,
-      best_range = NA_real_
-    ))
-  }
-  
-  # 1. Identify the winning row from diagnostics
-  best_row <- fit$diagnostics %>%
-    filter(ok, is.finite(SSErr)) %>%
-    slice(1)
-  
-  best_fit_name <- paste0(
-    best_row$model,
-    "_method",
-    best_row$fit_method
-  )
-  
-  # 2. Extract range from the fitted variogram (non-nugget component)
-  bf <- as_tibble(fit$best) %>%
-    mutate(model = as.character(model))
-  
-  best_range <- bf %>%
-    filter(model != "Nug") %>%
-    pull(range) %>%
-    { if (length(.) == 0) NA_real_ else as.numeric(.[1]) }
-  
-  tibble(
-    best_fit_name = best_fit_name,
-    best_range = best_range
-  )
 }
 

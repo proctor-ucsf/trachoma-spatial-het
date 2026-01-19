@@ -13,6 +13,25 @@ cluster_dat <- readRDS(here("data", "clean", "cluster_dat.rds"))
 districts_tib <- readRDS(here("data", "clean", "districts_tib.rds"))
 amhara_shp <- readRDS(here("data", "clean", "amhara_shp.rds"))
 
+# Moran's I ----
+
+k_grid <- c(4, 5, 6)
+
+compute_morans_i_k <- function(df, k) {
+  compute_morans_i(df, k = k)
+}
+
+morans_results <- cluster_dat %>%
+  tidyr::crossing(k = k_grid) %>%
+  group_by(district, marker, k) %>%
+  tidyr::nest() %>%
+  mutate(res = purrr::map2(data, k, ~ compute_morans_i_k(.x, k = .y))) %>%
+  tidyr::unnest(res) %>%
+  dplyr::select(-data) %>%
+  ungroup()
+
+saveRDS(morans_results, here("data", "clean", "morans_i_results.rds"))
+
 # Variograms ----
 
 ## Compute empirical variograms for all district + marker combos ----

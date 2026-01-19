@@ -39,6 +39,7 @@ amhara_shp <- readRDS(here("data", "clean", "amhara_shp.rds"))
 
 eth1_shp <- st_read(here("data", "eth_admin_boundaries", "eth_admin1.shp"))
 
+morans_raw <- readRDS(here("data", "clean", "morans_i_results.rds"))
 spatial_preds <- readRDS(here("data", "clean", "spatial_preds.rds"))
 ```
 
@@ -205,6 +206,42 @@ district_meta <- districts_tib %>%
     })
   )
 
+morans_results <- morans_raw %>%
+  dplyr::filter(k == 5, marker == "Pgp3") %>%
+  dplyr::select(district, morans_I, p_value)
+
+district_meta <- district_meta %>%
+  left_join(morans_results, by = join_by(district)) %>%
+  mutate(moran_txt = paste0("I = ", round(morans_I, 2), "\n",
+                             "p = ", signif(p_value, 2), "\n\n")) %>%
+  mutate(x = case_when(
+    district %in% c("Metema", "Machakel", "Debay Tilatgin", 
+                    "Fogera", "Tach Gaynt", "Bibugn") ~ - Inf,
+    district %in% c("Ebinat", "Fagita Lekoma", 
+                    "Goncha", "Albuko",
+                    "Debre Birhan Town", "Woreta Town") ~ Inf,
+    TRUE ~ NA_real_),
+  y = case_when(
+    district %in% c("Metema", "Ebinat", "Fagita Lekoma", 
+                    "Goncha", "Debay Tilatgin", 
+                    "Debre Birhan Town", "Tach Gaynt", 
+                    "Fogera", "Albuko", "Woreta Town") ~ -Inf,
+    district %in% c("Machakel", "Bibugn") ~ Inf,
+    TRUE ~ NA_real_),
+  hjust = case_when(
+    x == Inf & y == -Inf ~ 1,
+    x == Inf & y == Inf ~ 1,
+    x == -Inf & y == -Inf ~ 0,
+    x == -Inf & y == Inf ~ 0
+  ),
+  vjust = case_when(
+    x == Inf & y == -Inf ~ 0,
+    x == Inf & y == Inf ~ 1,
+    x == -Inf & y == -Inf ~ 0,
+    x == -Inf & y == Inf ~ 1
+  ))
+  
+
 # Handy lookup lists 
 boundary_by_dist <- set_names(district_meta$boundary, district_meta$district)
 xlim_by_dist     <- set_names(district_meta$xlim,     district_meta$district)
@@ -303,6 +340,11 @@ make_prev_plot <- function(dist) {
       data = pts,
       aes(x = lon, y = lat, size = prev_perc, fill = prev_perc),
       pch = 21, alpha = 0.6
+    ) +
+    geom_text(
+      data = district_meta %>% filter(district == !!dist),
+      aes(x = x, y = y, label = moran_txt, hjust = hjust, vjust = vjust),
+      size = 2.5, lineheight = 0.9
     ) +
     coord_for_dist(dist) +
     scale_fill_viridis_c(option="D", direction=1, limits=c(0,100), breaks=seq(0,100,25),
