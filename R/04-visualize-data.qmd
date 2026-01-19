@@ -1,0 +1,218 @@
+---
+title: "Visualize data from Carter Center surveys in Amhara, Ethiopia for spatial heterogeneity analysis"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    toc: true
+    code-fold: true
+    toc-depth: 3
+    fig-width: 8
+    fig-height: 6
+    embed-resources: true
+editor:
+  markdown:
+    wrap: 72
+execute:
+  cache: false
+  warning: false
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+
+library(here)
+```
+
+```{r load-data}
+
+source(here("R", "00-config.R"))
+source(here("R", "00-functions.R"))
+
+cluster_dat <- readRDS(here("data", "clean", "cluster_dat.rds"))
+districts_tib <- readRDS(here("data", "clean", "districts_tib.rds"))
+amhara_shp <- readRDS(here("data", "clean", "amhara_shp.rds"))
+```
+
+# Study-level summaries
+
+```{r study-summaries-prep, fig.width = 9, fig.height = 6}
+
+cluster_summ <- cluster_dat %>%
+  group_by(study_id, marker) %>%
+  summarise(n_clusters = n(),
+            n_indiv = sum(n_indiv),
+            n_tested = sum(n),
+            n_pos = sum(pos),
+            mean_prev = mean(prev, na.rm = TRUE),
+            perc_tested = 100*n_tested / n_indiv,
+            perc_pos = 100*n_pos / n_tested,
+            .groups = "drop") %>%
+  mutate(n_text = paste0(n_clusters, " clusters\n", n_indiv, " individuals\n",
+                         n_tested, " (", round(perc_tested, 1), "%) tested \n",
+                         n_pos, " (", round(perc_pos, 1), "%) positive")) 
+```
+
+```{r study-summaries-text-plot, fig.width = 9, fig.height = 6}
+
+ggplot(cluster_summ, aes(x = 0, y = 0, color = study_id)) +
+  geom_text(aes(label = n_text)) +
+  scale_size_continuous(name = "Number of individuals tested") +
+  theme_minimal(base_size = 14) +
+  facet_grid(study_id ~ marker, switch = "y",
+             labeller = labeller(
+               study_id = function(x) str_remove(x, "TCC-"),
+               marker = as_labeller(c(
+                 "pgp3" = "Pgp3",
+                 "ct694" = "Ct694",
+                 "tf" = "TF",
+                 "ti" = "TI",
+                 "pcr" = "PCR"
+               ))
+             )) +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_blank(),
+        panel.background = element_rect(color = "grey40"),
+        legend.position = "none") +
+  scale_colour_paletteer_d("ggthemes::wsj_rgby")
+```
+
+```{r study-summaries-boxplots, fig.width = 9, fig.height = 6}
+
+ggplot(cluster_dat) +
+  geom_boxplot(aes(x = prev_perc, y = 0, color = study_id), outliers = FALSE) +
+  geom_point(aes(x = prev_perc, y = 0, color = study_id), 
+             position = position_jitter(height = 0.1), alpha = 0.5) +
+  facet_grid(study_id ~ marker, switch = "y",
+             labeller = labeller(
+               study_id = function(x) str_remove(x, "TCC-"),
+               marker = as_labeller(c(
+                 "pgp3" = "Pgp3",
+                 "ct694" = "Ct694",
+                 "tf" = "TF",
+                 "ti" = "TI",
+                 "pcr" = "PCR"
+               ))
+             )) +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none") +
+  scale_x_continuous(labels = seq(0, 100, by = 20),
+                     limits = c(0, 100), breaks = seq(0, 100, by = 20),
+                     name = "Prevalence (%)") +
+  scale_colour_paletteer_d("ggthemes::wsj_rgby")
+```
+
+# Cluster-level 
+
+## Boxplots
+
+```{r eu-summary-boxplots, fig.height=9, fig.width = 11}
+
+dist_summ <- cluster_dat %>%
+  group_by(district, district_n, marker) %>%
+  summarise(total_indiv = sum(n),
+            total_clusters = n_distinct(cluster_id),
+            n_zero = sum(pos==0),
+            mean_prev = mean(prev, na.rm = TRUE),
+            sd_prev = sd(prev, na.rm = TRUE),
+            med_prev = median(prev, na.rm = TRUE),
+            .groups = "drop") %>%
+  mutate(txt = paste0("n indiv = ", total_indiv, "\nzero prev clusters = ", n_zero,
+                      "/", total_clusters, "\nMean (SD) prev = ", round(mean_prev, 1), 
+                      " (", round(sd_prev, 1), ") %"),
+         txt2 = paste0("N = ", total_indiv))
+
+dist_prev <- ggplot(data = cluster_dat) +
+  geom_boxplot(aes(x = prev_perc, y = 0, color = district)) +
+  geom_point(aes(x = prev_perc, y = 0, color = district), 
+             position = position_jitter(height = 0.1), alpha = 0.5) +
+  geom_text(data = dist_summ, x = Inf, y = Inf, 
+            aes(label = txt),
+            hjust = 1, vjust = 1, size = 3.5) +
+  facet_grid(district_n ~ marker, switch = "y") +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none",
+        strip.text.y.left = element_text(angle = 0)) +
+  scale_x_continuous(labels = c("0", "20", "40", "60", "80", "100"),
+                     limits = c(0, 160), breaks = seq(0, 100, by = 20),
+                     name = "Prevalence (%)") +
+  scale_color_manual(breaks = districts_tib$district,
+                     values = districts_tib$dist_color,
+                     guide = "none")
+
+dist_prev
+
+```
+
+## Maps
+
+```{r district-cluster-prev-plots}
+#| fig-height: 7
+#| fig-width: 9
+
+make_marker_prev_patchwork <- function(marker,
+                                      ncol = 4) {
+
+  plot_list <- map(districts_tib$district, function(dist) {
+
+    dist_shp <- districts_tib %>%
+      filter(district == !!dist) %>%
+      pull(district_shp)
+
+    shp_dist <- amhara_shp %>%
+      filter(adm3_name == dist_shp)
+
+    dat_dist <- cluster_dat %>%
+      filter(district == dist) %>%
+      filter(marker == !!marker)
+
+    ggplot() +
+      geom_sf(data = shp_dist, color = "grey60") +
+      geom_point(
+        data = dat_dist,
+        aes(x = lon, y = lat,
+            size  = prev_perc,
+            color = prev_perc),
+        alpha = 0.5
+      ) +
+      scale_color_viridis_c(limits = c(0, 100), 
+                            oob = scales::squish,
+                            name = "Prevalence (%)") +
+      scale_size_continuous(limits = c(0, 100)) +
+      coord_sf() +
+      theme_minimal(base_size = 10) +
+      labs(title = dist, x = NULL, y = NULL) +
+      theme(
+        axis.text = element_blank(),
+        axis.ticks = element_blank()
+      ) +
+      ggspatial::annotation_scale(location = "br", width_hint = 0.3) +
+      guides(size = "none")
+  })
+
+  prev_plot <- wrap_plots(plot_list, ncol = ncol) +
+    plot_layout(guides = "collect", widths = c(1, 1, 1, 1), heights = c(1, 1, 1, 1)) +
+    plot_annotation(title = paste0("Cluster-level ", marker, " prevalence by district")) &
+    theme(legend.position = "bottom")
+  
+  ggsave(here("figs", paste0("cluster_prev_maps_", marker, ".png")),
+         prev_plot,
+         width = 9, height = 7)
+  
+  return(prev_plot)
+}
+
+# Build all 3 patchworks (named list)
+
+prev_patchworks <- imap(markers, ~ make_marker_prev_patchwork(marker = .x))
+
+prev_patchworks$pgp3
+prev_patchworks$tf
+prev_patchworks$pcr
+
+```
+

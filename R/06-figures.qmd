@@ -1,0 +1,455 @@
+--- 
+title: "Spatial Analysis of Trachoma Markers: Figures" 
+date: "r Sys.Date()" 
+format: 
+  html: 
+    toc: true 
+    code-fold: true 
+    toc-depth: 3 
+    fig-width: 8 
+    fig-height: 6 
+    embed-resources: true 
+  editor: 
+    markdown: 
+      wrap: 72 
+execute: 
+  cache: false 
+  warning: false 
+---
+
+
+```{r setup, include=FALSE}
+rm(list = ls())
+
+library(here)
+library(tidyverse)
+library(cowplot)
+library(sf)
+library(ggspatial)
+library(units)
+```
+
+```{r load-data}
+source(here("R", "00-config.R"))
+
+load(here("output", "figs", "figure_inputs.rda"))
+```
+
+# Manuscript figures
+
+```{r fig1a}
+
+amhara_shp_plot <- amhara_shp %>%
+  left_join(
+    districts_tib %>%
+      dplyr::select(district_shp, color),
+    by = join_by(adm3_name == district_shp)
+  ) %>%
+  rename(dist_color = color) %>%
+  replace_na(list(dist_color = "grey80"))
+
+eth_map <- ggplot() +
+  geom_sf(data = eth1_shp, fill = "white", color = "grey60") +
+  geom_sf(data = amhara_shp_plot, aes(fill = adm3_name), size = 0.8, color = NA) +
+  theme_minimal(base_size = 10) +
+  labs(x = "Longitude", y = "Latitude") +
+  # theme(legend.position.inside = c(0.85, 0.75),
+  #       legend.position = "inside",
+  #       legend.title = element_blank(),
+  #       legend.background = element_rect(fill = "white", color = NA)) +
+  theme(axis.title = element_blank()) +
+  scale_fill_manual(breaks = amhara_shp_plot$adm3_name, values = amhara_shp_plot$dist_color) +
+  guides(fill = "none", x = "none", y = "none") +
+  annotation_scale(location = "br", 
+                   bar_cols = c("grey50", "white"), 
+                   line_col = "grey40",
+                   text_col = "grey40",
+                   width_hint = 0.3) 
+
+am_map <- ggplot() +
+  geom_sf(data = amhara_shp_plot, aes(fill = survey_bin), color = "grey60") +
+  geom_point(data = dat_plot_joined,
+             aes(x = lon, y = lat, color = district), 
+             alpha = 0.7, size = 0.5) +
+  geom_label_repel(
+    data = districts_tib,
+    aes(x = lon_lbl, y = lat_lbl, label = district),
+    size = 3,
+    label.size = 0.2,
+    min.segment.length = 0,
+    segment.size = 0.3,
+    segment.color = "black",
+    box.padding = 0,
+    point.padding = 0,
+    force = 0,
+    seed = 123
+  ) +
+  scale_color_manual(breaks = districts_tib$district, values = districts_tib$color, guide = "none") +
+  coord_sf() +
+  theme_minimal(base_size = 10) +
+  labs(title = dist, x = "Longitude", y = "Latitude") +
+  # xlim(c(36, 40)) +
+  ylim(c(8.2, NA)) +
+  guides(fill = "none") +
+  scale_fill_manual(breaks = c(TRUE, FALSE), values = c("white", "grey70")) +
+  ggspatial::annotation_scale(location = "br", width_hint = 0.3)
+
+eth_map_bordered <-
+  eth_map +
+  theme(
+    panel.background = element_rect(fill = "white", colour = "black", linewidth = 0.4),
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.4)
+  )
+
+final_map <-
+  am_map +
+  inset_element(
+    eth_map_bordered,
+    left = 0, bottom = 0,
+    right = 0.60, top = 0.32,
+    ignore_tag = TRUE
+  )
+
+```
+
+```{r fig1b}
+
+tabone_dat <- tabone_dat %>%
+  rename(district_n = district) %>%
+  mutate(district = gsub("\n", " ", district_n))
+
+n_text <- tabone_dat %>%
+  group_by(district, marker) %>%
+  summarise(total_indiv = sum(n),
+            total_clusters = n_distinct(cluster_id),
+            n_zero = sum(pos==0),
+            mean_prev = mean(prev, na.rm = TRUE),
+            sd_prev = sd(prev, na.rm = TRUE),
+            med_prev = median(prev, na.rm = TRUE),
+            .groups = "drop") %>%
+  mutate(txt = paste0("n indiv = ", total_indiv, "\nzero prev clusters = ", n_zero,
+                      "/", total_clusters, "\nMean (SD) prev = ", round(mean_prev, 1), 
+                      " (", round(sd_prev, 1), ") %"),
+         txt2 = paste0("N = ", total_indiv))
+
+n_text <- n_text %>%
+  rename(district_n = district) %>%
+  mutate(district = gsub("\n", " ", district_n))
+
+tabone_dat$district_n <- fct_recode(tabone_dat$district_n, "Debre Birhan\nTown" = "Debre\nBirhan\nTown")
+n_text$district_n <- fct_recode(n_text$district_n, "Debre Birhan\nTown" = "Debre\nBirhan\nTown")
+
+bplot <- ggplot(data = tabone_dat) +
+  geom_boxplot(aes(x = prev, color = district, y = 1), outliers = FALSE) +
+  geom_point(aes(x = prev, y = 1, color = district), 
+             position = position_jitter(width = 0, height = 0.1), 
+             size = 0.7, alpha = 0.6) +
+  geom_text(data = n_text, x = Inf, y = -Inf, 
+            aes(label = txt2),
+            hjust = 1, vjust = 0, size = 2.5) +
+  facet_grid(district_n ~ marker, switch = "y") +
+  theme_minimal(base_size = 10) +
+  theme(axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none",
+        strip.text.y.left = element_text(angle = 0)) +
+  scale_color_manual(breaks = districts_tib$district, values = districts_tib$color) +
+  scale_x_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 25),
+                     name = "Prevalence (%)")
+
+bplot
+
+```
+
+```{r fig1}
+fig1 <- final_map + bplot +
+  plot_annotation(
+    tag_levels = "A"
+  ) &
+  theme(
+    plot.tag = element_text(size = 12)
+  )
+
+fig1
+
+ggsave(here("output", "figs", "fig1.png"), fig1, 
+       width = 10, height = 6, units = "in", dpi = 300)
+
+```
+
+```{r fig2 setup, message=FALSE, warning=FALSE}
+
+pad_frac_bottom <- 0.2
+
+# Precompute district meta (geometry + padded limits)
+
+district_meta <- tibble(district = district_order) %>%
+  left_join(districts_tib %>% distinct(district, district_shp), by = "district") %>%
+  mutate(
+    boundary = map(district_shp, ~ amhara_shp %>%
+                     filter(adm3_name == .x) %>%
+                     dplyr::select(geometry)),
+    bb = map(boundary, sf::st_bbox),
+    xlim = map(bb, ~ c(.x[["xmin"]], .x[["xmax"]])),
+    ylim = map(bb, ~ c(.x[["ymin"]], .x[["ymax"]])),
+    ylim_padded = map(ylim, ~ {
+      yrng <- diff(.x)
+      c(.x[1] - pad_frac_bottom * yrng, .x[2])
+    })
+  )
+
+# Handy lookup lists 
+boundary_by_dist <- set_names(district_meta$boundary, district_meta$district)
+xlim_by_dist     <- set_names(district_meta$xlim,     district_meta$district)
+ylim_by_dist     <- set_names(district_meta$ylim_padded, district_meta$district)
+
+# Pre-split points by district
+pgp3_points_by_dist <- dat_clean_long %>%
+  filter(marker == "Pgp3") %>%
+  transmute(district, lon, lat, prev = prev * 100) %>%
+  group_by(district) %>%
+  group_split(.keep = TRUE) %>%
+  set_names(map_chr(., ~ unique(.x$district)))
+
+# helper so missing districts return empty df (but still plot boundary + padding)
+get_points <- function(dist) {
+  pgp3_points_by_dist[[dist]] %||% tibble(lon = numeric(), lat = numeric(), prev = numeric())
+}
+
+# Pre-split predictions by district
+pgp3_preds_by_dist <- spatial_models %>%
+  dplyr::select(district, marker, predictions) %>%
+  filter(marker == "Pgp3") %>%
+  filter(!map_lgl(predictions, is.null)) %>%
+  mutate(
+    predictions = map(predictions, ~ dplyr::select(.x, -any_of(c("district", "marker"))))
+  ) %>%
+  tidyr::unnest(predictions, keep_empty = TRUE) %>%
+  mutate(value = pmin(pmax(value, 0), 1) * 100) %>%
+  group_by(district) %>%
+  group_split(.keep = TRUE) %>%
+  set_names(map_chr(., ~ as.character(unique(.x$district))[1]))
+
+
+get_preds <- function(dist) {
+  idx <- match(dist, names(pgp3_preds_by_dist))
+  if (!is.na(idx)) pgp3_preds_by_dist[[idx]] else tibble(x=numeric(), y=numeric(), value=numeric())
+}
+```
+
+```{r fig2-plot}
+# Shared theme + coord helper
+base_theme <- theme_minimal(base_size = 8) +
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    plot.subtitle = element_text(margin = margin(b = 2)),
+    plot.margin = margin(3, 3, 3, 3),
+
+    legend.key = element_rect(fill = NA, color = NA),
+    legend.background = element_rect(fill = NA, color = NA),
+    legend.box.background = element_rect(fill = NA, color = NA),
+    legend.ticks = element_blank()
+  )
+
+coord_for_dist <- function(dist) {
+  coord_sf(
+    crs = 4326,
+    xlim = xlim_by_dist[[dist]],
+    ylim = ylim_by_dist[[dist]],
+    expand = FALSE,
+    clip = "on"
+  )
+}
+
+scale_bar <- ggspatial::annotation_scale(
+  style = "bar",
+  location = "br",
+  width_hint = 0.2,
+  pad_y = unit(0.02, "npc"),
+  pad_x = unit(0.02, "npc")
+)
+
+# Plot makers
+make_prev_plot <- function(dist) {
+  boundary <- boundary_by_dist[[dist]]
+  pts      <- get_points(dist)
+
+  ggplot() +
+    geom_sf(data = boundary, fill = NA, color = "black", linewidth = 0.3) +
+    geom_point(
+      data = pts,
+      aes(x = lon, y = lat, size = prev, fill = prev),
+      pch = 21,
+      alpha = 0.6
+    ) +
+    coord_for_dist(dist) +
+    scale_fill_viridis_c(
+      option = "D",
+      direction = 1,
+      limits = c(0, 100),
+      breaks = seq(0, 100, 25),
+      name = "Prevalence (%)",
+      guide = guide_colorbar(
+        direction = "horizontal",
+        label.position = "bottom",
+        ticks = FALSE,
+        barheight = unit(8, "pt"),
+        barwidth  = unit(100, "pt")
+      )
+    ) +
+    scale_size_continuous(
+      limits = c(0, 100),
+      range = c(0.5, 6),
+      name = "Prevalence (%)",
+      guide = guide_legend(
+        direction = "horizontal",
+        label.position = "bottom",
+        title.position = "top",
+        keywidth = unit(15, "pt"),
+        keyheight = unit(8, "pt"),
+        override.aes = list(fill = "grey50", alpha = 0.6, pch = 21)
+      )
+    ) +
+    base_theme +
+    theme(legend.position = "none") +
+    scale_bar +
+    guides(fill = "none", size = "none")
+}
+
+make_pred_plot <- function(dist, show_legend = FALSE) {
+  boundary <- boundary_by_dist[[dist]]
+  pts      <- get_points(dist) %>% transmute(lon, lat)
+  preds    <- get_preds(dist)
+
+  raster_or_fill <- if (nrow(preds) > 0) {
+    list(
+      geom_raster(data = preds, aes(x = x, y = y, fill = value), interpolate = FALSE),
+      geom_sf(data = boundary, fill = NA, color = "black", linewidth = 0.3)
+    )
+  } else {
+    list(
+      geom_sf(data = boundary, fill = "grey75", color = "black", linewidth = 0.3)
+    )
+  }
+
+  p <- ggplot() +
+    raster_or_fill +
+    geom_point(
+      data = pts,
+      aes(x = lon, y = lat),
+      pch = 20, size = 0.5, color = "white",
+      alpha = 0.6
+    ) +
+    coord_for_dist(dist) +
+    scale_fill_viridis_c(
+      option = "D",
+      direction = 1,
+      limits = c(0, 100),
+      breaks = seq(0, 100, 25),
+      name = "Prevalence (%)",
+      guide = guide_colorbar(
+        direction = "horizontal",
+        label.position = "bottom",
+        ticks = FALSE,
+        barheight = unit(8, "pt"),
+        barwidth  = unit(100, "pt")
+      )
+    ) +
+    base_theme +
+    scale_bar
+
+  if (!show_legend) p <- p + theme(legend.position = "none")
+  p
+}
+
+# Build paired panels 
+spacer <- plot_spacer() + theme_minimal()
+
+district_pairs <- imap(district_order, function(dist, i) {
+
+  p_prev <- make_prev_plot(dist)
+  p_pred <- make_pred_plot(dist, show_legend = FALSE)
+
+  pair <- plot_grid(
+    p_prev, p_pred,
+    nrow = 1,
+    align = "hv",
+    axis = "tblr",
+    rel_widths = c(1, 1)
+  )
+
+  title <- ggdraw() +
+    draw_label(dist, fontface = "plain", size = 10, hjust = 0.5)
+
+  plot_grid(
+    title,
+    pair,
+    spacer,
+    ncol = 1,
+    rel_heights = c(0.12, 1, 0.02)
+  )
+})
+
+# Legend from first district plot 
+legend_plot <- make_pred_plot(district_order[[1]], show_legend = TRUE) +
+  theme(
+    legend.position = "bottom",
+    legend.box.margin = margin(0, 0, 0, 0),
+    legend.margin = margin(0, 0, 0, 0),
+    legend.title = element_text(size = 10, margin = margin(r = 12)),
+    legend.text = element_text(size = 9)
+  )
+
+legend <- get_legend(legend_plot)
+
+legend_row <- plot_grid(
+  spacer, legend, spacer,
+  nrow = 1,
+  rel_widths = c(0.2, 1, 0.2)
+)
+```
+
+```{r fig2-assemble}
+# Arrange into rows (2 districts per row, with gap column)
+rows <- map(
+  split(district_pairs, ceiling(seq_along(district_pairs) / 3)),
+  ~ plot_grid(
+      .x[[1]],
+      spacer,
+      .x[[2]],
+      spacer,
+      .x[[3]],
+      nrow = 1,
+      rel_widths = c(1, 0.10, 1, 0.10, 1),
+      align = "hv"
+    )
+)
+
+fig2_panels <- plot_grid(
+  plotlist = rows,
+  ncol = 1,
+  align = "hv"
+)
+
+fig2 <- plot_grid(
+  fig2_panels,
+  legend_row,
+  ncol = 1,
+  rel_heights = c(1, 0.1)
+)
+
+fig2
+```
+
+```{r fig2-save}
+
+ggsave(
+  here("output", "figs", "fig2.png"),
+  fig2,
+  width = 9, height = 8, units = "in", dpi = 300, bg = "white"
+)
+
+```
+

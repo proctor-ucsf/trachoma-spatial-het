@@ -1,0 +1,284 @@
+---
+title: "Spatial Analysis of Trachoma Markers in Carter Center surveys in Amhara, Ethiopia"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    toc: true
+    code-fold: true
+    toc-depth: 3
+    fig-width: 8
+    fig-height: 6
+    embed-resources: true
+editor:
+  markdown:
+    wrap: 72
+execute:
+  cache: false
+  warning: false
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+
+library(here)
+```
+
+```{r load-data, message=FALSE, warning=FALSE}
+
+source(here("R", "00-config.R"))
+
+# Load data
+cluster_dat <- readRDS(here("data", "clean", "cluster_dat.rds"))
+districts_tib <- readRDS(here("data", "clean", "districts_tib.rds"))
+amhara_shp <- readRDS(here("data", "clean", "amhara_shp.rds"))
+
+# Load results
+variograms <- readRDS(here("data", "clean", "variograms.rds"))
+spatial_models <- readRDS(here("data", "clean", "spatial_models.rds"))
+# district_grids <- readRDS(here("data", "clean", "district_grids.rds"))
+```
+
+```{r variograms-prep, message=FALSE, warning=FALSE}
+
+plot_data <- variograms %>%
+  transmute(district, marker, vgm) %>%
+  unnest(vgm) %>%              # vgm is a data.frame-like object; this unnests bins
+  as_tibble() %>%              # for ggplot convenience
+  mutate(type = "empirical")
+
+model_preds <- variograms %>%
+  mutate(
+    maxdist = cutoff,
+    preds = pmap(
+      list(fit, maxdist),
+      function(fit, maxdist) {
+        if (is.null(fit) || is.null(fit$fits) || !is.finite(maxdist) || maxdist <= 0) return(NULL)
+        imap_dfr(fit$fits, function(fit_obj, key) {
+          if (is.null(fit_obj)) return(NULL)
+          gstat::variogramLine(fit_obj, maxdist = maxdist) %>%
+            as_tibble() %>%
+            mutate(model = key)
+        })
+      }
+    )
+  ) %>%
+  filter(!map_lgl(preds, is.null)) %>%
+  dplyr::select(district, marker, preds) %>%
+  unnest(preds)
+
+range_df <- variograms %>%
+  dplyr::select(district, marker, best_fit_name, best_range) %>%
+  mutate(label = paste0(best_fit_name, "\nrange = ", round(best_range / 1000, 1), " km")) %>%
+  group_by(district, marker) %>%
+  summarise(label = paste(label, collapse = "\n"),
+            .groups = "drop")
+```
+
+```{r variograms-plot, message=FALSE, warning=FALSE, fig.width=7, fig.height=7}
+
+variogram_plots_by_marker <- map(markers, function(marker_name) {
+  
+  pd <- plot_data %>% filter(marker == marker_name)
+  mp <- model_preds %>% filter(marker == marker_name)
+  
+  p <- ggplot(pd, aes(x = dist / 1000, y = gamma)) +
+    geom_point(size = 1.8, alpha = 0.6) +
+    { if (nrow(mp) > 0)
+      geom_line(data = mp, aes(x = dist / 1000, y = gamma, color = model),
+                linewidth = 0.8)
+    } +
+    geom_text(
+      data = range_df %>% filter(marker == marker_name),
+      aes(
+        x = Inf,
+        y = Inf,
+        label = label
+      ),
+      size = 2.6,
+      hjust = 1,
+      vjust = 1,
+      show.legend = FALSE
+    ) +
+    facet_wrap(~ district, scales = "free_y", ncol = 4) +
+    labs(
+      title = paste("Empirical variograms + fitted curves:", marker_name),
+      x = "Distance (km)",
+      y = "Semivariance",
+      linetype = NULL
+    ) +
+    theme_minimal() +
+    theme(
+      strip.text = element_text(size = 8, face = "bold"),
+      legend.position = "bottom"
+    ) +
+    scale_y_continuous(labels = number_format(accuracy = 0.01)) +
+    scale_x_continuous(limits = c(0, 25))
+  
+  filename <- paste0("variograms_", marker_name, ".png")
+  ggsave(here::here("figs", filename),
+         p, width = 7, height = 7, units = "in", dpi = 300)
+  
+  message("Saved variogram plot for ", marker_name)
+  p
+})
+
+variogram_plots_by_marker
+
+```
+
+# CLEANED TILL HERE ON 18 JAN 2026 ----
+
+```{r spatial-model-summary, message=FALSE, warning=FALSE}
+
+table(spatial_models$fit_yn)
+
+spatial_models %>%
+  dplyr::select(district, marker, fit_yn) %>%
+  ungroup() %>%
+  pivot_wider(names_from = marker, values_from = fit_yn)
+
+aic_summary <- spatial_models %>%
+  dplyr::select(district, marker, fit_yn, pref_model) %>%
+  mutate(pref_model = ifelse(fit_yn == "neither fit", "neither fit", pref_model))
+
+# aic_summary %>%
+#   dplyr::select(district, marker, pref_model) %>%
+#   pivot_wider(names_from = marker, values_from = pref_model)
+
+ggplot(aic_summary) +
+  geom_tile(aes(x = marker, y = district, fill = pref_model), color = "white") +
+  scale_fill_manual(values = c("spatial" = "#f7cfad",
+                               "simple" = "#add5f7",
+                               "tie" = "grey80",
+                               "neither fit" = "white")) +
+  labs(x = "Marker",
+       fill = "Preferred Model") +
+  theme_minimal(base_size = 14) +
+  theme(axis.title = element_blank(),
+        legend.position = "bottom")
+
+```
+
+```{r generate-spatial-predictions}
+# Function to get predictions for one model
+get_predictions_for_model <- function(dist, mrk, model, grid_data) {
+  if(is.null(model)) return(NULL)
+  
+  study_grid <- grid_data %>%
+    filter(district == dist) %>%
+    pull(grid) %>%
+    .[[1]]
+  
+  preds_sf <- tryCatch(
+    get_grid_preds(study_grid, model),
+    error = function(e) {
+      warning(paste0("Prediction failed for ", district, " - ", mrk, ": ", e$message))
+      return(NULL)
+    }
+  )
+  
+  if(is.null(preds_sf)) return(NULL)
+  
+  # Convert to raster then tibble
+  preds_coords <- st_coordinates(preds_sf)
+  
+  pred_tibble <- tibble(
+    x = preds_coords[,1],
+    y = preds_coords[,2],
+    value = preds_sf$pred,  # Convert to percentage
+    district = dist,
+    marker = mrk
+  )
+  
+  return(pred_tibble)
+}
+
+# Get predictions for all models
+
+spatial_models <- spatial_models %>%
+  mutate(
+    predictions = pmap(
+      list(district, marker, spatial_model),
+      ~get_predictions_for_model(..1, ..2, ..3, district_grids)
+    )
+  )
+
+saveRDS(spatial_models, here("output", "rds", "spatial_models_with_predictions.rds"))
+
+preds_all <- spatial_models %>%
+  transmute(
+    district,
+    marker,
+    predictions = map(predictions, ~ {
+      if (is.null(.x)) {
+        tibble(x = numeric(), y = numeric(), value = numeric())
+      } else {
+        .x %>% dplyr::select(x, y, value)
+      }
+    })
+  ) %>%
+  unnest(predictions)
+
+```
+
+```{r plot-prediction-layers}
+
+make_marker_pred_patchwork <- function(marker,
+                                       marker_label = marker,
+                                       ncol = 4,
+                                       limits = c(0, 1)) {
+
+  plot_list <- map(district_order, function(dist) {
+
+    # district boundary
+    dist_shp <- districts_tib %>%
+      filter(district == !!dist) %>%
+      pull(district_shp)
+
+    shp_dist <- amhara_shp %>%
+      filter(adm3_name == dist_shp)
+
+    # predictions for this district+marker
+    pred_dist <- preds_all %>%
+      filter(district == dist, marker == !!marker) %>%
+      mutate(value = pmin(pmax(value, 0), 1))  # clamp to limits
+
+    ggplot() +
+      # raster layer if we have any preds
+      { if (nrow(pred_dist) > 0)
+          geom_raster(data = pred_dist, aes(x = x, y = y, fill = value), interpolate = FALSE)
+      } +
+      geom_sf(data = shp_dist, fill = NA, color = "grey60", linewidth = 0.3) +
+      scale_fill_viridis_c(limits = limits, name = "Predicted prevalence") +
+      coord_sf() +
+      theme_minimal(base_size = 10) +
+      labs(title = dist, x = NULL, y = NULL) +
+      theme(
+        axis.text = element_blank(),
+        axis.ticks = element_blank()
+      ) +
+      ggspatial::annotation_scale(location = "br", width_hint = 0.3)
+  })
+
+  pred_plot <- wrap_plots(plot_list, ncol = ncol) +
+    plot_layout(guides = "collect") +
+    plot_annotation(title = paste0("Predicted ", marker_label, " prevalence by district")) &
+    theme(legend.position = "bottom")
+  
+  ggsave(
+    pred_plot,
+    here("output", "figs", paste0("prediction_maps_", marker, ".png")),
+    width = 300, height = 200, units = "mm", dpi = 300
+  )
+  
+  return(pred_plot)
+}
+
+marker_levels <- c("Pgp3", "TF", "PCR")
+names(marker_levels) <- marker_levels  # labels = values
+
+pred_patchworks <- imap(marker_levels, ~ make_marker_pred_patchwork(marker = .y, marker_label = .x))
+
+pred_patchworks
+
+```
