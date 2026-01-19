@@ -35,7 +35,7 @@ amhara_shp <- readRDS(here("data", "clean", "amhara_shp.rds"))
 # Load results
 variograms <- readRDS(here("data", "clean", "variograms.rds"))
 spatial_models <- readRDS(here("data", "clean", "spatial_models.rds"))
-# district_grids <- readRDS(here("data", "clean", "district_grids.rds"))
+spatial_preds <- readRDS(here("data", "clean", "spatial_preds.rds"))
 ```
 
 ```{r variograms-prep, message=FALSE, warning=FALSE}
@@ -126,8 +126,6 @@ variogram_plots_by_marker
 
 ```
 
-# CLEANED TILL HERE ON 18 JAN 2026 ----
-
 ```{r spatial-model-summary, message=FALSE, warning=FALSE}
 
 table(spatial_models$fit_yn)
@@ -159,68 +157,6 @@ ggplot(aic_summary) +
 
 ```
 
-```{r generate-spatial-predictions}
-# Function to get predictions for one model
-get_predictions_for_model <- function(dist, mrk, model, grid_data) {
-  if(is.null(model)) return(NULL)
-  
-  study_grid <- grid_data %>%
-    filter(district == dist) %>%
-    pull(grid) %>%
-    .[[1]]
-  
-  preds_sf <- tryCatch(
-    get_grid_preds(study_grid, model),
-    error = function(e) {
-      warning(paste0("Prediction failed for ", district, " - ", mrk, ": ", e$message))
-      return(NULL)
-    }
-  )
-  
-  if(is.null(preds_sf)) return(NULL)
-  
-  # Convert to raster then tibble
-  preds_coords <- st_coordinates(preds_sf)
-  
-  pred_tibble <- tibble(
-    x = preds_coords[,1],
-    y = preds_coords[,2],
-    value = preds_sf$pred,  # Convert to percentage
-    district = dist,
-    marker = mrk
-  )
-  
-  return(pred_tibble)
-}
-
-# Get predictions for all models
-
-spatial_models <- spatial_models %>%
-  mutate(
-    predictions = pmap(
-      list(district, marker, spatial_model),
-      ~get_predictions_for_model(..1, ..2, ..3, district_grids)
-    )
-  )
-
-saveRDS(spatial_models, here("output", "rds", "spatial_models_with_predictions.rds"))
-
-preds_all <- spatial_models %>%
-  transmute(
-    district,
-    marker,
-    predictions = map(predictions, ~ {
-      if (is.null(.x)) {
-        tibble(x = numeric(), y = numeric(), value = numeric())
-      } else {
-        .x %>% dplyr::select(x, y, value)
-      }
-    })
-  ) %>%
-  unnest(predictions)
-
-```
-
 ```{r plot-prediction-layers}
 
 make_marker_pred_patchwork <- function(marker,
@@ -228,7 +164,7 @@ make_marker_pred_patchwork <- function(marker,
                                        ncol = 4,
                                        limits = c(0, 1)) {
 
-  plot_list <- map(district_order, function(dist) {
+  plot_list <- map(districts_tib$district, function(dist) {
 
     # district boundary
     dist_shp <- districts_tib %>%
@@ -266,13 +202,27 @@ make_marker_pred_patchwork <- function(marker,
     theme(legend.position = "bottom")
   
   ggsave(
+    here("figs", paste0("prediction_maps_", marker, ".png")),
     pred_plot,
-    here("output", "figs", paste0("prediction_maps_", marker, ".png")),
     width = 300, height = 200, units = "mm", dpi = 300
   )
   
   return(pred_plot)
 }
+
+preds_all <- spatial_preds %>%
+  transmute(
+    district,
+    marker,
+    predictions = map(predictions, ~ {
+      if (is.null(.x)) {
+        tibble(x = numeric(), y = numeric(), value = numeric())
+      } else {
+        .x %>% dplyr::select(x, y, value)
+      }
+    })
+  ) %>%
+  unnest(predictions)
 
 marker_levels <- c("Pgp3", "TF", "PCR")
 names(marker_levels) <- marker_levels  # labels = values

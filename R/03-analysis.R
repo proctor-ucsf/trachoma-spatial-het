@@ -54,13 +54,28 @@ saveRDS(fit_results, here("data", "clean", "variograms.rds"))
 
 ## Fit spatial models for all district + marker combos ----
 
-spatial_models <- variograms_meta %>%
+spatial_models_fit <- variograms_meta %>%
   mutate(models = pmap(list(district, marker), ~fit_spatial_model(..1, ..2, cluster_dat)),
          spatial_model = map(models, ~.x$spatial_model),
          simple_model = map(models, ~.x$simple_model),
          marg_aic_spatial = map(models, ~.x$aic_spatial[[1]]),
          marg_aic_simple = map(models, ~.x$aic_simple[[1]]),
-         error_type = map_chr(models, ~if(!is.null(.x$error)) .x$error else NA_character_)) %>%
+         error_type = map_chr(models, ~if(!is.null(.x$error)) .x$error else NA_character_)) 
+
+spatial_models <- spatial_models_fit %>%
+  mutate(across(c(starts_with("marg_aic"), warnings), ~unlist(.x))) %>%
+  mutate(spatial_fit_yn = ifelse(!map_lgl(spatial_model, is.null), "yes", "no"),
+         simple_fit_yn = ifelse(!map_lgl(simple_model, is.null), "yes", "no"),
+         fit_yn = case_when(
+           spatial_fit_yn == "yes" & simple_fit_yn == "yes" ~ "both fit",
+           simple_fit_yn == "yes" ~ "only simple fit",
+           spatial_fit_yn == "yes" ~ "only spatial fit",
+           TRUE ~ "neither fit"))  %>%
+  mutate(marg_aic_diff = marg_aic_spatial - marg_aic_simple,
+         pref_model = case_when(is.na(marg_aic_diff) ~ "neither",
+                                marg_aic_diff < -2 ~ "spatial",
+                                marg_aic_diff > 2 ~ "simple",
+                                 TRUE ~ "tie")) %>%
   mutate(lambda = spatial_model$lambda,
          nu = spatial_model$corrPars[[1]]$nu,
          rho = spatial_model$corrPars[[1]]$rho)
@@ -118,11 +133,11 @@ district_grids <- district_grids %>%
   mutate(grid = grids_list) %>%
   left_join(districts_tib, by = "district_shp")
 
-saveRDS(district_grids, here("data", "clean", "district_grids.rds"))
-
 ## Generate predictions for each district + marker combo ----
 
 # Get predictions for all models
+
+tictoc::tic("Generate predictions for all spatial models")
 
 spatial_models <- spatial_models %>%
   mutate(
@@ -132,4 +147,6 @@ spatial_models <- spatial_models %>%
     )
   )
 
-saveRDS(spatial_models, here("output", "rds", "spatial_models_with_predictions.rds"))
+tictoc::toc()
+
+saveRDS(spatial_models, here("data", "clean", "spatial_preds.rds"))

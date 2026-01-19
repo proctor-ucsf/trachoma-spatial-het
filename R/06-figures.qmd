@@ -32,7 +32,14 @@ library(units)
 ```{r load-data}
 source(here("R", "00-config.R"))
 
-load(here("output", "figs", "figure_inputs.rda"))
+# load(here("output", "figs", "figure_inputs.rda"))
+cluster_dat <- readRDS(here("data", "clean", "cluster_dat.rds"))
+districts_tib <- readRDS(here("data", "clean", "districts_tib.rds"))
+amhara_shp <- readRDS(here("data", "clean", "amhara_shp.rds"))
+
+eth1_shp <- st_read(here("data", "eth_admin_boundaries", "eth_admin1.shp"))
+
+spatial_preds <- readRDS(here("data", "clean", "spatial_preds.rds"))
 ```
 
 # Manuscript figures
@@ -42,10 +49,9 @@ load(here("output", "figs", "figure_inputs.rda"))
 amhara_shp_plot <- amhara_shp %>%
   left_join(
     districts_tib %>%
-      dplyr::select(district_shp, color),
+      dplyr::select(district_shp, dist_color),
     by = join_by(adm3_name == district_shp)
   ) %>%
-  rename(dist_color = color) %>%
   replace_na(list(dist_color = "grey80"))
 
 eth_map <- ggplot() +
@@ -68,7 +74,7 @@ eth_map <- ggplot() +
 
 am_map <- ggplot() +
   geom_sf(data = amhara_shp_plot, aes(fill = survey_bin), color = "grey60") +
-  geom_point(data = dat_plot_joined,
+  geom_point(data = cluster_dat,
              aes(x = lon, y = lat, color = district), 
              alpha = 0.7, size = 0.5) +
   geom_label_repel(
@@ -84,7 +90,7 @@ am_map <- ggplot() +
     force = 0,
     seed = 123
   ) +
-  scale_color_manual(breaks = districts_tib$district, values = districts_tib$color, guide = "none") +
+  scale_color_manual(breaks = districts_tib$district, values = districts_tib$dist_color, guide = "none") +
   coord_sf() +
   theme_minimal(base_size = 10) +
   labs(title = dist, x = "Longitude", y = "Latitude") +
@@ -110,16 +116,17 @@ final_map <-
     ignore_tag = TRUE
   )
 
+final_map
 ```
 
 ```{r fig1b}
 
-tabone_dat <- tabone_dat %>%
-  rename(district_n = district) %>%
-  mutate(district = gsub("\n", " ", district_n))
+# tabone_dat <- cluster_dat %>%
+#   rename(district_n = district) %>%
+#   mutate(district = gsub("\n", " ", district_n))
 
-n_text <- tabone_dat %>%
-  group_by(district, marker) %>%
+n_text <- cluster_dat %>%
+  group_by(district, district_n, marker) %>%
   summarise(total_indiv = sum(n),
             total_clusters = n_distinct(cluster_id),
             n_zero = sum(pos==0),
@@ -132,16 +139,16 @@ n_text <- tabone_dat %>%
                       " (", round(sd_prev, 1), ") %"),
          txt2 = paste0("N = ", total_indiv))
 
-n_text <- n_text %>%
-  rename(district_n = district) %>%
-  mutate(district = gsub("\n", " ", district_n))
+# n_text <- n_text %>%
+#   rename(district_n = district) %>%
+#   mutate(district = gsub("\n", " ", district_n))
+# 
+# tabone_dat$district_n <- fct_recode(tabone_dat$district_n, "Debre Birhan\nTown" = "Debre\nBirhan\nTown")
+# n_text$district_n <- fct_recode(n_text$district_n, "Debre Birhan\nTown" = "Debre\nBirhan\nTown")
 
-tabone_dat$district_n <- fct_recode(tabone_dat$district_n, "Debre Birhan\nTown" = "Debre\nBirhan\nTown")
-n_text$district_n <- fct_recode(n_text$district_n, "Debre Birhan\nTown" = "Debre\nBirhan\nTown")
-
-bplot <- ggplot(data = tabone_dat) +
-  geom_boxplot(aes(x = prev, color = district, y = 1), outliers = FALSE) +
-  geom_point(aes(x = prev, y = 1, color = district), 
+bplot <- ggplot(data = cluster_dat) +
+  geom_boxplot(aes(x = prev_perc, color = district, y = 1), outliers = FALSE) +
+  geom_point(aes(x = prev_perc, y = 1, color = district), 
              position = position_jitter(width = 0, height = 0.1), 
              size = 0.7, alpha = 0.6) +
   geom_text(data = n_text, x = Inf, y = -Inf, 
@@ -153,7 +160,7 @@ bplot <- ggplot(data = tabone_dat) +
         axis.title.y = element_blank(),
         legend.position = "none",
         strip.text.y.left = element_text(angle = 0)) +
-  scale_color_manual(breaks = districts_tib$district, values = districts_tib$color) +
+  scale_color_manual(breaks = districts_tib$district, values = districts_tib$dist_color) +
   scale_x_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 25),
                      name = "Prevalence (%)")
 
@@ -172,7 +179,7 @@ fig1 <- final_map + bplot +
 
 fig1
 
-ggsave(here("output", "figs", "fig1.png"), fig1, 
+ggsave(here("figs", "fig1.png"), fig1, 
        width = 10, height = 6, units = "in", dpi = 300)
 
 ```
@@ -183,12 +190,12 @@ pad_frac_bottom <- 0.2
 
 # Precompute district meta (geometry + padded limits)
 
-district_meta <- tibble(district = district_order) %>%
-  left_join(districts_tib %>% distinct(district, district_shp), by = "district") %>%
+district_meta <- districts_tib %>%
   mutate(
     boundary = map(district_shp, ~ amhara_shp %>%
                      filter(adm3_name == .x) %>%
-                     dplyr::select(geometry)),
+                     dplyr::select(geometry) %>%
+                     sf::st_transform(4326)),
     bb = map(boundary, sf::st_bbox),
     xlim = map(bb, ~ c(.x[["xmin"]], .x[["xmax"]])),
     ylim = map(bb, ~ c(.x[["ymin"]], .x[["ymax"]])),
@@ -204,12 +211,25 @@ xlim_by_dist     <- set_names(district_meta$xlim,     district_meta$district)
 ylim_by_dist     <- set_names(district_meta$ylim_padded, district_meta$district)
 
 # Pre-split points by district
-pgp3_points_by_dist <- dat_clean_long %>%
+pgp3_points_by_dist <- cluster_dat %>%
   filter(marker == "Pgp3") %>%
-  transmute(district, lon, lat, prev = prev * 100) %>%
+  mutate(district = as.character(district)) %>%
+  transmute(district, lon, lat, prev_perc) %>%
   group_by(district) %>%
   group_split(.keep = TRUE) %>%
   set_names(map_chr(., ~ unique(.x$district)))
+
+pgp3_pts_sf <- cluster_dat %>%
+  filter(marker == "Pgp3") %>%
+  transmute(lon, lat, prev_perc) %>%
+  sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE)
+
+get_points_in_boundary <- function(boundary_sf) {
+  # boundary_sf is an sf with 1 polygon/multipolygon row
+  inside <- sf::st_within(pgp3_pts_sf, boundary_sf, sparse = FALSE)[, 1]
+  pgp3_pts_sf[inside, , drop = FALSE]
+}
+
 
 # helper so missing districts return empty df (but still plot boundary + padding)
 get_points <- function(dist) {
@@ -217,7 +237,7 @@ get_points <- function(dist) {
 }
 
 # Pre-split predictions by district
-pgp3_preds_by_dist <- spatial_models %>%
+pgp3_preds_by_dist <- spatial_preds %>%
   dplyr::select(district, marker, predictions) %>%
   filter(marker == "Pgp3") %>%
   filter(!map_lgl(predictions, is.null)) %>%
@@ -272,56 +292,129 @@ scale_bar <- ggspatial::annotation_scale(
 )
 
 # Plot makers
+# make_prev_plot <- function(dist) {
+#   boundary <- boundary_by_dist[[dist]]
+#   pts      <- get_points(dist)
+# 
+#   ggplot() +
+#     geom_sf(data = boundary, fill = NA, color = "black", linewidth = 0.3) +
+#     geom_point(
+#       data = pts,
+#       aes(x = lon, y = lat, size = prev_perc, fill = prev_perc),
+#       pch = 21,
+#       alpha = 0.6
+#     ) +
+#     coord_for_dist(dist) +
+#     scale_fill_viridis_c(
+#       option = "D",
+#       direction = 1,
+#       limits = c(0, 100),
+#       breaks = seq(0, 100, 25),
+#       name = "Prevalence (%)",
+#       guide = guide_colorbar(
+#         direction = "horizontal",
+#         label.position = "bottom",
+#         ticks = FALSE,
+#         barheight = unit(8, "pt"),
+#         barwidth  = unit(100, "pt")
+#       )
+#     ) +
+#     scale_size_continuous(
+#       limits = c(0, 100),
+#       range = c(0.5, 6),
+#       name = "Prevalence (%)",
+#       guide = guide_legend(
+#         direction = "horizontal",
+#         label.position = "bottom",
+#         title.position = "top",
+#         keywidth = unit(15, "pt"),
+#         keyheight = unit(8, "pt"),
+#         override.aes = list(fill = "grey50", alpha = 0.6, pch = 21)
+#       )
+#     ) +
+#     base_theme +
+#     theme(legend.position = "none") +
+#     scale_bar +
+#     guides(fill = "none", size = "none")
+# }
+
 make_prev_plot <- function(dist) {
   boundary <- boundary_by_dist[[dist]]
-  pts      <- get_points(dist)
+  pts <- get_points_in_boundary(boundary)
 
   ggplot() +
     geom_sf(data = boundary, fill = NA, color = "black", linewidth = 0.3) +
     geom_point(
       data = pts,
-      aes(x = lon, y = lat, size = prev, fill = prev),
-      pch = 21,
-      alpha = 0.6
+      aes(x = lon, y = lat, size = prev_perc, fill = prev_perc),
+      pch = 21, alpha = 0.6
     ) +
     coord_for_dist(dist) +
-    scale_fill_viridis_c(
-      option = "D",
-      direction = 1,
-      limits = c(0, 100),
-      breaks = seq(0, 100, 25),
-      name = "Prevalence (%)",
-      guide = guide_colorbar(
-        direction = "horizontal",
-        label.position = "bottom",
-        ticks = FALSE,
-        barheight = unit(8, "pt"),
-        barwidth  = unit(100, "pt")
-      )
-    ) +
-    scale_size_continuous(
-      limits = c(0, 100),
-      range = c(0.5, 6),
-      name = "Prevalence (%)",
-      guide = guide_legend(
-        direction = "horizontal",
-        label.position = "bottom",
-        title.position = "top",
-        keywidth = unit(15, "pt"),
-        keyheight = unit(8, "pt"),
-        override.aes = list(fill = "grey50", alpha = 0.6, pch = 21)
-      )
-    ) +
+    scale_fill_viridis_c(option="D", direction=1, limits=c(0,100), breaks=seq(0,100,25),
+                         name="Prevalence (%)",
+                         guide=guide_colorbar(direction="horizontal", label.position="bottom",
+                                              ticks=FALSE, barheight=unit(8,"pt"), barwidth=unit(100,"pt"))) +
+    scale_size_continuous(limits=c(0,100), range=c(0.5,6), name="Prevalence (%)",
+                          guide=guide_legend(direction="horizontal", label.position="bottom",
+                                             title.position="top", keywidth=unit(15,"pt"),
+                                             keyheight=unit(8,"pt"),
+                                             override.aes=list(fill="grey50", alpha=0.6, pch=21))) +
     base_theme +
-    theme(legend.position = "none") +
+    theme(legend.position="none") +
     scale_bar +
-    guides(fill = "none", size = "none")
+    guides(fill="none", size="none")
 }
+
+# make_pred_plot <- function(dist, show_legend = FALSE) {
+#   boundary <- boundary_by_dist[[dist]]
+#   pts      <- get_points(dist) %>% transmute(lon, lat)
+#   preds    <- get_preds(dist)
+# 
+#   raster_or_fill <- if (nrow(preds) > 0) {
+#     list(
+#       geom_raster(data = preds, aes(x = x, y = y, fill = value), interpolate = FALSE),
+#       geom_sf(data = boundary, fill = NA, color = "black", linewidth = 0.3)
+#     )
+#   } else {
+#     list(
+#       geom_sf(data = boundary, fill = "grey75", color = "black", linewidth = 0.3)
+#     )
+#   }
+# 
+#   p <- ggplot() +
+#     raster_or_fill +
+#     geom_point(
+#       data = pts,
+#       aes(x = lon, y = lat),
+#       pch = 20, size = 0.5, color = "white",
+#       alpha = 0.6
+#     ) +
+#     coord_for_dist(dist) +
+#     scale_fill_viridis_c(
+#       option = "D",
+#       direction = 1,
+#       limits = c(0, 100),
+#       breaks = seq(0, 100, 25),
+#       name = "Prevalence (%)",
+#       guide = guide_colorbar(
+#         direction = "horizontal",
+#         label.position = "bottom",
+#         ticks = FALSE,
+#         barheight = unit(8, "pt"),
+#         barwidth  = unit(100, "pt")
+#       )
+#     ) +
+#     base_theme +
+#     scale_bar
+# 
+#   if (!show_legend) p <- p + theme(legend.position = "none")
+#   p
+# }
 
 make_pred_plot <- function(dist, show_legend = FALSE) {
   boundary <- boundary_by_dist[[dist]]
-  pts      <- get_points(dist) %>% transmute(lon, lat)
-  preds    <- get_preds(dist)
+  pts <- get_points_in_boundary(boundary) %>% transmute(lon, lat)
+  preds <- get_preds(dist)
 
   raster_or_fill <- if (nrow(preds) > 0) {
     list(
@@ -336,27 +429,13 @@ make_pred_plot <- function(dist, show_legend = FALSE) {
 
   p <- ggplot() +
     raster_or_fill +
-    geom_point(
-      data = pts,
-      aes(x = lon, y = lat),
-      pch = 20, size = 0.5, color = "white",
-      alpha = 0.6
-    ) +
+    geom_point(data = pts, aes(x = lon, y = lat),
+               pch = 20, size = 0.5, color = "white", alpha = 0.6) +
     coord_for_dist(dist) +
-    scale_fill_viridis_c(
-      option = "D",
-      direction = 1,
-      limits = c(0, 100),
-      breaks = seq(0, 100, 25),
-      name = "Prevalence (%)",
-      guide = guide_colorbar(
-        direction = "horizontal",
-        label.position = "bottom",
-        ticks = FALSE,
-        barheight = unit(8, "pt"),
-        barwidth  = unit(100, "pt")
-      )
-    ) +
+    scale_fill_viridis_c(option="D", direction=1, limits=c(0,100), breaks=seq(0,100,25),
+                         name="Prevalence (%)",
+                         guide=guide_colorbar(direction="horizontal", label.position="bottom",
+                                              ticks=FALSE, barheight=unit(8,"pt"), barwidth=unit(100,"pt"))) +
     base_theme +
     scale_bar
 
@@ -367,7 +446,7 @@ make_pred_plot <- function(dist, show_legend = FALSE) {
 # Build paired panels 
 spacer <- plot_spacer() + theme_minimal()
 
-district_pairs <- imap(district_order, function(dist, i) {
+district_pairs <- imap(districts_tib$district, function(dist, i) {
 
   p_prev <- make_prev_plot(dist)
   p_pred <- make_pred_plot(dist, show_legend = FALSE)
@@ -393,7 +472,7 @@ district_pairs <- imap(district_order, function(dist, i) {
 })
 
 # Legend from first district plot 
-legend_plot <- make_pred_plot(district_order[[1]], show_legend = TRUE) +
+legend_plot <- make_pred_plot(districts_tib$district[[1]], show_legend = TRUE) +
   theme(
     legend.position = "bottom",
     legend.box.margin = margin(0, 0, 0, 0),
@@ -446,7 +525,7 @@ fig2
 ```{r fig2-save}
 
 ggsave(
-  here("output", "figs", "fig2.png"),
+  here("figs", "fig2.png"),
   fig2,
   width = 9, height = 8, units = "in", dpi = 300, bg = "white"
 )

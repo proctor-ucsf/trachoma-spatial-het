@@ -11,7 +11,6 @@ dat_raw <- readRDS(file.path(data_folder_path, "trachoma_serology_harmonized_dat
 
 # Load shapefiles
 eth3_shp <- st_read(here("data", "eth_admin_boundaries", "eth_admin3.shp"))
-# eth1_shp <- st_read(here("data", "eth_admin_boundaries", "eth_admin1.shp"))
 
 # Pre-process survey data ----
 
@@ -117,6 +116,7 @@ combined_temp <- amhara_shp %>%
     area_sqkm = sum(area_sqkm),
     center_lat = mean(center_lat),
     center_lon = mean(center_lon),
+    survey_bin = TRUE,
     .groups = "drop"
   ) %>%
   mutate(adm3_name = "Goncha")
