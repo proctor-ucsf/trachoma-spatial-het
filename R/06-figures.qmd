@@ -291,52 +291,7 @@ scale_bar <- ggspatial::annotation_scale(
   pad_x = unit(0.02, "npc")
 )
 
-# Plot makers
-# make_prev_plot <- function(dist) {
-#   boundary <- boundary_by_dist[[dist]]
-#   pts      <- get_points(dist)
-# 
-#   ggplot() +
-#     geom_sf(data = boundary, fill = NA, color = "black", linewidth = 0.3) +
-#     geom_point(
-#       data = pts,
-#       aes(x = lon, y = lat, size = prev_perc, fill = prev_perc),
-#       pch = 21,
-#       alpha = 0.6
-#     ) +
-#     coord_for_dist(dist) +
-#     scale_fill_viridis_c(
-#       option = "D",
-#       direction = 1,
-#       limits = c(0, 100),
-#       breaks = seq(0, 100, 25),
-#       name = "Prevalence (%)",
-#       guide = guide_colorbar(
-#         direction = "horizontal",
-#         label.position = "bottom",
-#         ticks = FALSE,
-#         barheight = unit(8, "pt"),
-#         barwidth  = unit(100, "pt")
-#       )
-#     ) +
-#     scale_size_continuous(
-#       limits = c(0, 100),
-#       range = c(0.5, 6),
-#       name = "Prevalence (%)",
-#       guide = guide_legend(
-#         direction = "horizontal",
-#         label.position = "bottom",
-#         title.position = "top",
-#         keywidth = unit(15, "pt"),
-#         keyheight = unit(8, "pt"),
-#         override.aes = list(fill = "grey50", alpha = 0.6, pch = 21)
-#       )
-#     ) +
-#     base_theme +
-#     theme(legend.position = "none") +
-#     scale_bar +
-#     guides(fill = "none", size = "none")
-# }
+# Plot maker functions
 
 make_prev_plot <- function(dist) {
   boundary <- boundary_by_dist[[dist]]
@@ -364,52 +319,6 @@ make_prev_plot <- function(dist) {
     scale_bar +
     guides(fill="none", size="none")
 }
-
-# make_pred_plot <- function(dist, show_legend = FALSE) {
-#   boundary <- boundary_by_dist[[dist]]
-#   pts      <- get_points(dist) %>% transmute(lon, lat)
-#   preds    <- get_preds(dist)
-# 
-#   raster_or_fill <- if (nrow(preds) > 0) {
-#     list(
-#       geom_raster(data = preds, aes(x = x, y = y, fill = value), interpolate = FALSE),
-#       geom_sf(data = boundary, fill = NA, color = "black", linewidth = 0.3)
-#     )
-#   } else {
-#     list(
-#       geom_sf(data = boundary, fill = "grey75", color = "black", linewidth = 0.3)
-#     )
-#   }
-# 
-#   p <- ggplot() +
-#     raster_or_fill +
-#     geom_point(
-#       data = pts,
-#       aes(x = lon, y = lat),
-#       pch = 20, size = 0.5, color = "white",
-#       alpha = 0.6
-#     ) +
-#     coord_for_dist(dist) +
-#     scale_fill_viridis_c(
-#       option = "D",
-#       direction = 1,
-#       limits = c(0, 100),
-#       breaks = seq(0, 100, 25),
-#       name = "Prevalence (%)",
-#       guide = guide_colorbar(
-#         direction = "horizontal",
-#         label.position = "bottom",
-#         ticks = FALSE,
-#         barheight = unit(8, "pt"),
-#         barwidth  = unit(100, "pt")
-#       )
-#     ) +
-#     base_theme +
-#     scale_bar
-# 
-#   if (!show_legend) p <- p + theme(legend.position = "none")
-#   p
-# }
 
 make_pred_plot <- function(dist, show_legend = FALSE) {
   boundary <- boundary_by_dist[[dist]]

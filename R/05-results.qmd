@@ -74,7 +74,7 @@ range_df <- variograms %>%
             .groups = "drop")
 ```
 
-```{r variograms-plot, message=FALSE, warning=FALSE, fig.width=7, fig.height=7}
+```{r variograms-plot, message=FALSE, warning=FALSE, fig.width=7, fig.height=9}
 
 variogram_plots_by_marker <- map(markers, function(marker_name) {
   
@@ -157,7 +157,7 @@ ggplot(aic_summary) +
 
 ```
 
-```{r plot-prediction-layers}
+```{r plot-prediction-layers, message=FALSE, warning=FALSE, fig.height=6, fig.width=9}
 
 make_marker_pred_patchwork <- function(marker,
                                        marker_label = marker,
