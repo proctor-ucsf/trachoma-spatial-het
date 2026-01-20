@@ -185,304 +185,6 @@ ggsave(here("figs", "fig1.png"), fig1,
 
 ```
 
-```{r fig2-setup, message=FALSE, warning=FALSE}
-
-pad_frac_bottom <- 0.2
-
-# Precompute district meta (geometry + padded limits)
-
-district_meta <- districts_tib %>%
-  mutate(
-    boundary = map(district_shp, ~ amhara_shp %>%
-                     filter(adm3_name == .x) %>%
-                     dplyr::select(geometry) %>%
-                     sf::st_transform(4326)),
-    bb = map(boundary, sf::st_bbox),
-    xlim = map(bb, ~ c(.x[["xmin"]], .x[["xmax"]])),
-    ylim = map(bb, ~ c(.x[["ymin"]], .x[["ymax"]])),
-    ylim_padded = map(ylim, ~ {
-      yrng <- diff(.x)
-      c(.x[1] - pad_frac_bottom * yrng, .x[2])
-    })
-  )
-
-morans_results <- morans_raw %>%
-  dplyr::filter(k == 5, marker == "Pgp3") %>%
-  dplyr::select(district, morans_I, p_value)
-
-district_meta <- district_meta %>%
-  left_join(morans_results, by = join_by(district)) %>%
-  mutate(moran_txt = paste0("I = ", round(morans_I, 2), "\n",
-                             "p = ", signif(p_value, 2), "\n\n")) %>%
-  mutate(x = case_when(
-    district %in% c("Metema", "Machakel", "Debay Tilatgin", 
-                    "Fogera", "Tach Gaynt", "Bibugn") ~ - Inf,
-    district %in% c("Ebinat", "Fagita Lekoma", 
-                    "Goncha", "Albuko",
-                    "Debre Birhan Town", "Woreta Town") ~ Inf,
-    TRUE ~ NA_real_),
-  y = case_when(
-    district %in% c("Metema", "Ebinat", "Fagita Lekoma", 
-                    "Goncha", "Debay Tilatgin", 
-                    "Debre Birhan Town", "Tach Gaynt", 
-                    "Fogera", "Albuko", "Woreta Town") ~ -Inf,
-    district %in% c("Machakel", "Bibugn") ~ Inf,
-    TRUE ~ NA_real_),
-  hjust = case_when(
-    x == Inf & y == -Inf ~ 1,
-    x == Inf & y == Inf ~ 1,
-    x == -Inf & y == -Inf ~ 0,
-    x == -Inf & y == Inf ~ 0
-  ),
-  vjust = case_when(
-    x == Inf & y == -Inf ~ 0,
-    x == Inf & y == Inf ~ 1,
-    x == -Inf & y == -Inf ~ 0,
-    x == -Inf & y == Inf ~ 1
-  ))
-  
-
-# Handy lookup lists 
-boundary_by_dist <- set_names(district_meta$boundary, district_meta$district)
-xlim_by_dist     <- set_names(district_meta$xlim,     district_meta$district)
-ylim_by_dist     <- set_names(district_meta$ylim_padded, district_meta$district)
-
-# Pre-split points by district
-pgp3_points_by_dist <- cluster_dat %>%
-  filter(marker == "Pgp3") %>%
-  mutate(district = as.character(district)) %>%
-  transmute(district, lon, lat, prev_perc) %>%
-  group_by(district) %>%
-  group_split(.keep = TRUE) %>%
-  set_names(map_chr(., ~ unique(.x$district)))
-
-pgp3_pts_sf <- cluster_dat %>%
-  filter(marker == "Pgp3") %>%
-  transmute(lon, lat, prev_perc) %>%
-  sf::st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE)
-
-get_points_in_boundary <- function(boundary_sf) {
-  # boundary_sf is an sf with 1 polygon/multipolygon row
-  inside <- sf::st_within(pgp3_pts_sf, boundary_sf, sparse = FALSE)[, 1]
-  pgp3_pts_sf[inside, , drop = FALSE]
-}
-
-
-# helper so missing districts return empty df (but still plot boundary + padding)
-get_points <- function(dist) {
-  pgp3_points_by_dist[[dist]] %||% tibble(lon = numeric(), lat = numeric(), prev = numeric())
-}
-
-# Pre-split predictions by district
-pgp3_preds_by_dist <- spatial_preds %>%
-  dplyr::select(district, marker, predictions) %>%
-  filter(marker == "Pgp3") %>%
-  filter(!map_lgl(predictions, is.null)) %>%
-  mutate(
-    predictions = map(predictions, ~ dplyr::select(.x, -any_of(c("district", "marker"))))
-  ) %>%
-  tidyr::unnest(predictions, keep_empty = TRUE) %>%
-  mutate(value = pmin(pmax(value, 0), 1) * 100) %>%
-  group_by(district) %>%
-  group_split(.keep = TRUE) %>%
-  set_names(map_chr(., ~ as.character(unique(.x$district))[1]))
-
-
-get_preds <- function(dist) {
-  idx <- match(dist, names(pgp3_preds_by_dist))
-  if (!is.na(idx)) pgp3_preds_by_dist[[idx]] else tibble(x=numeric(), y=numeric(), value=numeric())
-}
-```
-
-```{r fig2-plot}
-# Shared theme + coord helper
-base_theme <- theme_minimal(base_size = 8) +
-  theme(
-    axis.text = element_blank(),
-    axis.title = element_blank(),
-    panel.grid = element_blank(),
-    plot.subtitle = element_text(margin = margin(b = 2)),
-    plot.margin = margin(3, 3, 3, 3),
-
-    legend.key = element_rect(fill = NA, color = NA),
-    legend.background = element_rect(fill = NA, color = NA),
-    legend.box.background = element_rect(fill = NA, color = NA),
-    legend.ticks = element_blank()
-  )
-
-coord_for_dist <- function(dist) {
-  coord_sf(
-    crs = 4326,
-    xlim = xlim_by_dist[[dist]],
-    ylim = ylim_by_dist[[dist]],
-    expand = FALSE,
-    clip = "on"
-  )
-}
-
-scale_bar <- ggspatial::annotation_scale(
-  style = "bar",
-  location = "br",
-  width_hint = 0.2,
-  pad_y = unit(0.02, "npc"),
-  pad_x = unit(0.02, "npc")
-)
-
-# Plot maker functions
-
-make_prev_plot <- function(dist) {
-  boundary <- boundary_by_dist[[dist]]
-  pts <- get_points_in_boundary(boundary)
-
-  ggplot() +
-    geom_sf(data = boundary, fill = NA, color = "black", linewidth = 0.3) +
-    geom_point(
-      data = pts,
-      aes(x = lon, y = lat, size = prev_perc, fill = prev_perc),
-      pch = 21, alpha = 0.6
-    ) +
-    geom_text(
-      data = district_meta %>% filter(district == !!dist),
-      aes(x = x, y = y, label = moran_txt, hjust = hjust, vjust = vjust),
-      size = 2.5, lineheight = 0.9
-    ) +
-    coord_for_dist(dist) +
-    scale_fill_viridis_c(option="D", direction=1, limits=c(0,100), breaks=seq(0,100,25),
-                         name="Prevalence (%)",
-                         guide=guide_colorbar(direction="horizontal", label.position="bottom",
-                                              ticks=FALSE, barheight=unit(8,"pt"), barwidth=unit(100,"pt"))) +
-    scale_size_continuous(limits=c(0,100), range=c(0.5,6), name="Prevalence (%)",
-                          guide=guide_legend(direction="horizontal", label.position="bottom",
-                                             title.position="top", keywidth=unit(15,"pt"),
-                                             keyheight=unit(8,"pt"),
-                                             override.aes=list(fill="grey50", alpha=0.6, pch=21))) +
-    base_theme +
-    theme(legend.position="none") +
-    scale_bar +
-    guides(fill="none", size="none")
-}
-
-make_pred_plot <- function(dist, show_legend = FALSE) {
-  boundary <- boundary_by_dist[[dist]]
-  pts <- get_points_in_boundary(boundary) %>% transmute(lon, lat)
-  preds <- get_preds(dist)
-
-  raster_or_fill <- if (nrow(preds) > 0) {
-    list(
-      geom_raster(data = preds, aes(x = x, y = y, fill = value), interpolate = FALSE),
-      geom_sf(data = boundary, fill = NA, color = "black", linewidth = 0.3)
-    )
-  } else {
-    list(
-      geom_sf(data = boundary, fill = "grey75", color = "black", linewidth = 0.3)
-    )
-  }
-
-  p <- ggplot() +
-    raster_or_fill +
-    geom_point(data = pts, aes(x = lon, y = lat),
-               pch = 20, size = 0.5, color = "white", alpha = 0.6) +
-    coord_for_dist(dist) +
-    scale_fill_viridis_c(option="D", direction=1, limits=c(0,100), breaks=seq(0,100,25),
-                         name="Prevalence (%)",
-                         guide=guide_colorbar(direction="horizontal", label.position="bottom",
-                                              ticks=FALSE, barheight=unit(8,"pt"), barwidth=unit(100,"pt"))) +
-    base_theme +
-    scale_bar
-
-  if (!show_legend) p <- p + theme(legend.position = "none")
-  p
-}
-
-# Build paired panels 
-spacer <- plot_spacer() + theme_minimal()
-
-district_pairs <- imap(districts_tib$district, function(dist, i) {
-
-  p_prev <- make_prev_plot(dist)
-  p_pred <- make_pred_plot(dist, show_legend = FALSE)
-
-  pair <- plot_grid(
-    p_prev, p_pred,
-    nrow = 1,
-    align = "hv",
-    axis = "tblr",
-    rel_widths = c(1, 1)
-  )
-
-  title <- ggdraw() +
-    draw_label(dist, fontface = "plain", size = 10, hjust = 0.5)
-
-  plot_grid(
-    title,
-    pair,
-    spacer,
-    ncol = 1,
-    rel_heights = c(0.12, 1, 0.02)
-  )
-})
-
-# Legend from first district plot 
-legend_plot <- make_pred_plot(districts_tib$district[[1]], show_legend = TRUE) +
-  theme(
-    legend.position = "bottom",
-    legend.box.margin = margin(0, 0, 0, 0),
-    legend.margin = margin(0, 0, 0, 0),
-    legend.title = element_text(size = 10, margin = margin(r = 12)),
-    legend.text = element_text(size = 9)
-  )
-
-legend <- get_legend(legend_plot)
-
-legend_row <- plot_grid(
-  spacer, legend, spacer,
-  nrow = 1,
-  rel_widths = c(0.2, 1, 0.2)
-)
-```
-
-```{r fig2-assemble}
-# Arrange into rows (2 districts per row, with gap column)
-rows <- map(
-  split(district_pairs, ceiling(seq_along(district_pairs) / 3)),
-  ~ plot_grid(
-      .x[[1]],
-      spacer,
-      .x[[2]],
-      spacer,
-      .x[[3]],
-      nrow = 1,
-      rel_widths = c(1, 0.10, 1, 0.10, 1),
-      align = "hv"
-    )
-)
-
-fig2_panels <- plot_grid(
-  plotlist = rows,
-  ncol = 1,
-  align = "hv"
-)
-
-fig2 <- plot_grid(
-  fig2_panels,
-  legend_row,
-  ncol = 1,
-  rel_heights = c(1, 0.1)
-)
-
-fig2
-```
-
-```{r fig2-save}
-
-ggsave(
-  here("figs", "fig2.png"),
-  fig2,
-  width = 9, height = 8, units = "in", dpi = 300, bg = "white"
-)
-
-```
-
 ```{r prev-figs-setup, message=FALSE, warning=FALSE}
 pad_frac_bottom <- 0.2
 
@@ -633,6 +335,8 @@ build_spatial_figure_for_marker <- function(marker_name) {
     mutate(
       moran_txt = if_else(is.na(moran_txt), "", moran_txt) # keep empty if missing
     )
+  
+  name_str <- ifelse(marker_name == "Pgp3", "Seroprevalence (%)", "Prevalence (%)")
 
   pts_sf <- make_marker_points_sf(marker_name)
   preds_by_dist <- make_preds_by_dist(marker_name)
@@ -658,7 +362,7 @@ build_spatial_figure_for_marker <- function(marker_name) {
       scale_fill_viridis_c(
         option = "D", direction = 1,
         limits = c(0, 100), breaks = seq(0, 100, 25),
-        name = "Prevalence (%)",
+        name = name_str,
         guide = guide_colorbar(
           direction = "horizontal", label.position = "bottom",
           ticks = FALSE, barheight = unit(8, "pt"), barwidth = unit(100, "pt")
@@ -666,7 +370,7 @@ build_spatial_figure_for_marker <- function(marker_name) {
       ) +
       scale_size_continuous(
         limits = c(0, 100), range = c(0.5, 6),
-        name = "Prevalence (%)",
+        name = name_str,
         guide = guide_legend(
           direction = "horizontal", label.position = "bottom",
           title.position = "top", keywidth = unit(15, "pt"),
@@ -706,7 +410,7 @@ build_spatial_figure_for_marker <- function(marker_name) {
       scale_fill_viridis_c(
         option = "D", direction = 1,
         limits = c(0, 100), breaks = seq(0, 100, 25),
-        name = "Prevalence (%)",
+        name = name_str,
         guide = guide_colorbar(
           direction = "horizontal", label.position = "bottom",
           ticks = FALSE, barheight = unit(8, "pt"), barwidth = unit(100, "pt")

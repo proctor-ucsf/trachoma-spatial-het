@@ -2,6 +2,8 @@
 
 rm(list = ls())
 
+library(here)
+
 source(here("R", "00-config.R"))
 
 # Load raw data ----
@@ -91,7 +93,7 @@ districts_tib <- districts_tib %>%
   mutate(district = factor(district, levels = district_order, ordered = TRUE),
          district_n = factor(district_n, levels = district_order_n, ordered = TRUE)) %>%
   arrange(district) %>%
-  mutate(dist_color = viridis(n = nrow(.), option = "B", end = 0.9))
+  mutate(dist_color = viridis(n = nrow(.), option = "B", end = 0.9, direction = -1))
 
 cluster_dat_long <- cluster_dat_long %>%
   mutate(district_n = ifelse(district == "Debre Birhan Town",
