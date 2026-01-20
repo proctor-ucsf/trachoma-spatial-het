@@ -39,6 +39,57 @@ spatial_models <- readRDS(here("data", "clean", "spatial_models.rds"))
 spatial_preds <- readRDS(here("data", "clean", "spatial_preds.rds"))
 ```
 
+```{r data-summary-1}
+
+n_districts <- cluster_dat %>% distinct(district) %>% nrow()
+n_clusters <- cluster_dat %>% distinct(district, cluster_id) %>% nrow()
+```
+
+There are a total of `r n_districts` districts with `r n_clusters` clusters in the included surveys in Amhara, Ethiopia. The number of clusters per district (and by marker) is summarized below:
+
+
+```{r data-summary-2}
+cluster_dat %>%
+  distinct(district, cluster_id) %>%          
+  count(district, name = "n_clusters")
+
+cluster_dat %>%
+  distinct(district, marker, cluster_id) %>%  
+  count(district, marker, name = "n_clusters") %>%
+  pivot_wider(names_from = marker, values_from = n_clusters, values_fill = 0)
+```
+
+# Moran's I Results
+
+```{r morans-key-results, message=FALSE, warning=FALSE, fig.width=7, fig.height=9}
+
+district_dat <- cluster_dat %>%
+  group_by(district, marker) %>%
+  summarise(mean_prev = weighted.mean(prev, n_indiv, na.rm = TRUE),
+            med_prev = median(prev, na.rm = TRUE),
+            simple_mean_prev = mean(prev, na.rm = TRUE),
+            .groups = "drop")
+
+morans_dat <- morans_results %>%
+  filter(k == 5) %>%
+  left_join(district_dat, by = c("district", "marker"))
+
+ggplot(morans_dat) +
+  geom_point(aes(x = mean_prev, y = morans_I), size = 2, alpha = 0.6) +
+  facet_wrap(~ marker, ncol = 1) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom") +
+  labs(x = "Mean prevalence", y = "Moran's I") +
+  xlim(c(0, 1)) +
+  ggpubr::stat_cor(aes(x = mean_prev, y = morans_I), 
+                   method = "pearson", 
+                   label.x.npc = "right", label.y.npc = "top", 
+                   size = 5, hjust = 1)
+
+```
+
+## Sensitivity to Number of Neighbors (k)
+
 ```{r morans-summary, message=FALSE, warning=FALSE, fig.width=9, fig.height=6}
 
 morans_results <- morans_results %>%
@@ -57,6 +108,7 @@ ggplot(morans_results) +
 
 ```
 
+# Variograms
 
 ```{r variograms-prep, message=FALSE, warning=FALSE}
 
@@ -146,6 +198,8 @@ variogram_plots_by_marker
 
 ```
 
+# Spatial Model Results
+
 ```{r spatial-model-summary, message=FALSE, warning=FALSE}
 
 table(spatial_models$fit_yn)
@@ -176,6 +230,8 @@ ggplot(aic_summary) +
         legend.position = "bottom")
 
 ```
+
+## Prediction Maps
 
 ```{r plot-prediction-layers, message=FALSE, warning=FALSE, fig.height=6, fig.width=9}
 
