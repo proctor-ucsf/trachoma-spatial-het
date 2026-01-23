@@ -186,9 +186,10 @@ ggsave(here("figs", "fig1.png"), fig1,
 ```
 
 ```{r prev-figs-setup, message=FALSE, warning=FALSE}
-pad_frac_bottom <- 0.2
 
-# --- District geometry + fixed layout meta (shared across all markers) ----
+pad_frac_bottom <- 0.2
+pad_frac_right <- 0.7
+
 district_meta_base <- districts_tib %>%
   mutate(
     boundary = map(district_shp, ~ amhara_shp %>%
@@ -196,11 +197,24 @@ district_meta_base <- districts_tib %>%
                      dplyr::select(geometry) %>%
                      sf::st_transform(4326)),
     bb = map(boundary, sf::st_bbox),
+
     xlim = map(bb, ~ c(.x[["xmin"]], .x[["xmax"]])),
     ylim = map(bb, ~ c(.x[["ymin"]], .x[["ymax"]])),
+
+    # bottom padding (all districts)
     ylim_padded = map(ylim, ~ {
       yrng <- diff(.x)
       c(.x[1] - pad_frac_bottom * yrng, .x[2])
+    }),
+
+    # right padding (Bibugn only)
+    xlim_padded = map2(xlim, district, ~ {
+      xrng <- diff(.x)
+      if (.y == "Bibugn") {
+        c(.x[1], .x[2] + pad_frac_right * xrng)
+      } else {
+        .x
+      }
     })
   )
 
@@ -209,18 +223,17 @@ district_meta_base <- district_meta_base %>%
   mutate(
     x = case_when(
       district %in% c("Metema", "Machakel", "Debay Tilatgin",
-                      "Fogera", "Tach Gaynt", "Bibugn") ~ -Inf,
-      district %in% c("Ebinat", "Fagita Lekoma",
-                      "Goncha", "Albuko",
+                      "Fogera", "Tach Gaynt", "Fagita Lekoma") ~ -Inf,
+      district %in% c("Ebinat", "Goncha", "Albuko", "Bibugn",
                       "Debre Birhan Town", "Woreta Town") ~ Inf,
       TRUE ~ NA_real_
     ),
     y = case_when(
       district %in% c("Metema", "Ebinat", "Fagita Lekoma",
-                      "Goncha", "Debay Tilatgin",
+                      "Goncha", "Debay Tilatgin", "Bibugn",
                       "Debre Birhan Town", "Tach Gaynt",
                       "Fogera", "Albuko", "Woreta Town") ~ -Inf,
-      district %in% c("Machakel", "Bibugn") ~ Inf,
+      district %in% c("Machakel") ~ Inf,
       TRUE ~ NA_real_
     ),
     hjust = case_when(
@@ -241,19 +254,24 @@ district_meta_base <- district_meta_base %>%
 
 # Handy lookup lists (shared)
 boundary_by_dist <- set_names(district_meta_base$boundary, district_meta_base$district)
-xlim_by_dist     <- set_names(district_meta_base$xlim, district_meta_base$district)
+xlim_by_dist     <- set_names(district_meta_base$xlim_padded, district_meta_base$district)
 ylim_by_dist     <- set_names(district_meta_base$ylim_padded, district_meta_base$district)
 
 # ---- Marker-specific helpers ----
 
+morans_res <- morans_raw %>%
+  mutate(morans_I = ifelse(is.nan(morans_I), NA, morans_I)) %>%
+  mutate(p_value = ifelse(is.na(morans_I), NA, p_value))
+
 get_morans_for_marker <- function(marker_name) {
-  morans_raw %>%
+  morans_res %>%
     dplyr::filter(k == 5, marker == marker_name) %>%
     dplyr::select(district, morans_I, p_value) %>%
     mutate(
       moran_txt = paste0(
         "I = ", round(morans_I, 2), "\n",
-        "p = ", signif(p_value, 2), "\n\n"
+        "p = ", signif(p_value, 2),
+        ifelse(district == "Fagita Lekoma", "\n", "\n\n")
       )
     )
 }
