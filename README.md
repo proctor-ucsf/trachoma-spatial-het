@@ -80,5 +80,4 @@ Run scripts in order after updating paths in `R/00-config.R`:
   this analysis was individual-level data (v5).
 - GPS coordinates for cluster locations cannot be made public due to privacy considerations.
 
-- Parallel processing is used in spatial modeling (see `n_cores` in
-  `R/00-config.R` and `R/03-analysis.R`).
+- Parallel processing is used in spatial modeling (`n_cores` set in `R/00-config.R`).
