@@ -1,3 +1,12 @@
+# collect_warnings
+# Purpose: Evaluate an expression while capturing (and muffling) warnings.
+# Inputs:
+#   - expr: an expression to evaluate.
+# Outputs:
+#   - list with:
+#     - value: evaluated result of expr.
+#     - warnings: unique character vector of warning messages.
+
 collect_warnings <- function(expr) {
   warns <- character(0)
   val <- withCallingHandlers(
@@ -11,6 +20,15 @@ collect_warnings <- function(expr) {
 }
 
 # Moran's I ----
+
+# compute_morans_i
+# Purpose: Compute Moran's I for a data frame of point prevalence values.
+# Inputs:
+#   - df: data frame with lon, lat, prev columns.
+#   - k: number of nearest neighbors for spatial weights.
+#   - nsim: number of Monte Carlo simulations.
+# Outputs:
+#   - tibble with morans_I, p_value, and n (number of points).
 
 compute_morans_i <- function(df, k = 5, nsim = 1000) {
   
@@ -50,6 +68,16 @@ compute_morans_i <- function(df, k = 5, nsim = 1000) {
 
 # Variograms ----
 
+# empty_variogram_result
+# Purpose: Standardize the empty/failed variogram result structure.
+# Inputs:
+#   - dist_i: district name.
+#   - mrk: marker name.
+#   - n_points: number of points in the subset.
+#   - cutoff, width, n_bins, n_bins_populated, np_min, np_median: metadata.
+#   - warnings: character vector of warning messages.
+# Outputs:
+#   - tibble with variogram metadata and NULL variogram object.
 empty_variogram_result <- function(dist_i,
                                    mrk,
                                    n_points,
@@ -75,7 +103,18 @@ empty_variogram_result <- function(dist_i,
   )
 }
 
-# Function to compute variogram for one study-marker combination
+# compute_variogram
+# Purpose: Compute an empirical variogram for one district-marker combination.
+# Inputs:
+#   - i: row index into combos.
+#   - df: cluster-level data frame with lon/lat/prev columns.
+#   - combos: data frame with district and marker columns.
+#   - proj_crs: target CRS for distance calculations.
+#   - min_points: minimum points required to attempt a variogram.
+#   - target_bins, min_bins_populated, min_pairs_per_bin: binning controls.
+#   - max_dist_cap: maximum distance cap (meters).
+# Outputs:
+#   - tibble with variogram metadata and vgm object (or NULL if skipped).
 
 compute_variogram <- function(i,
                               df,
@@ -224,7 +263,18 @@ compute_variogram <- function(i,
   )
 }
 
-# Function to fit variogram models (Matern and Spherical)
+# fit_variogram_models
+# Purpose: Fit candidate variogram models and select the best by SSE.
+# Inputs:
+#   - vgm_df: empirical variogram data frame.
+#   - fit_methods: gstat fit methods to try.
+#   - min_bins_populated: minimum bins required to attempt fitting.
+#   - min_pairs_per_bin: minimum pairs per bin.
+#   - models: variogram model names to consider.
+#   - kappa: Matern smoothness parameter.
+# Outputs:
+#   - list with fitted models, diagnostics, and best model.
+
 fit_variogram_models <- function(vgm_df,
                                  fit_methods = c(1, 2, 6, 7),
                                  min_bins_populated = 5,
@@ -355,13 +405,12 @@ fit_variogram_models <- function(vgm_df,
   )
 }
 
-# Function to create variogram model predictions for plotting
-get_variogram_predictions <- function(var_mat, var_sph, maxdist) {
-  if (is.null(fit_obj)) return(NULL)
-  gstat::variogramLine(fit_obj, maxdist = maxdist) %>%
-    as_tibble() %>%
-    mutate(model = label)
-}
+# extract_best_name_and_range
+# Purpose: Extract the best variogram model name and range from fit results.
+# Inputs:
+#   - fit: list returned by fit_variogram_models.
+# Outputs:
+#   - tibble with best_fit_name and best_range.
 
 extract_best_name_and_range <- function(fit) {
   if (is.null(fit$best) || nrow(fit$diagnostics) == 0) {
@@ -399,6 +448,15 @@ extract_best_name_and_range <- function(fit) {
 
 
 # Spatial models ----
+
+# fit_spatial_model
+# Purpose: Fit spatial (Matern) and non-spatial Gaussian models for a district-marker.
+# Inputs:
+#   - dist: district name.
+#   - mrk: marker name.
+#   - df: cluster-level data with prev, lon, lat.
+# Outputs:
+#   - list with spatial_model, simple_model, AICs, and optional error flag.
 
 fit_spatial_model <- function(dist, mrk, df) {
   
@@ -474,29 +532,17 @@ fit_spatial_model <- function(dist, mrk, df) {
   )
 }
 
-# Function to plot Matern correlation by distance
-plot_matern_corr <- function(spamm_fit, maxdist = 300) {
-  # Extract Matern parameters
-  lambda <- spamm_fit$lambda
-  nu <- spamm_fit$corrPars$nu
-  rho <- spamm_fit$corrPars$rho
-  
-  # Generate distance sequence
-  dist_seq <- seq(0, maxdist, length.out = 100)
-  
-  # Calculate Matern correlation
-  corr <- (2^(1-nu) / gamma(nu)) * (dist_seq/rho)^nu * besselK(dist_seq/rho, nu)
-  corr[1] <- 1  # correlation at distance 0
-  
-  # Create plot
-  ggplot(data.frame(distance = dist_seq, correlation = corr), 
-         aes(x = distance, y = correlation)) +
-    geom_line(linewidth = 1) +
-    labs(x = "Distance (km)", y = "Correlation") +
-    theme_minimal()
-}
+# create_district_grid
+# Purpose: Create a grid of points within a district polygon.
+# Inputs:
+#   - dist_shp_name: district name as used in shapefile.
+#   - shapefile: sf object with district polygons.
+#   - data: cluster-level data.
+#   - districts_lookup: lookup table with district name mappings.
+#   - n_grid: number of grid cells per side.
+# Outputs:
+#   - sf geometry collection of grid points within the district polygon.
 
-# Function to create a grid of points within a district polygon
 create_district_grid <- function(dist_shp_name, shapefile, data, districts_lookup, n_grid = 50) {
   
   # Get the district polygon from shapefile
@@ -522,7 +568,14 @@ create_district_grid <- function(dist_shp_name, shapefile, data, districts_looku
   return(grid_within)
 }
 
-# Function to get spatial predictions on a grid
+# get_grid_preds
+# Purpose: Predict prevalence over a grid of sf points using a spaMM model.
+# Inputs:
+#   - input_grid: sf points (grid).
+#   - spamm_model_fit: fitted spaMM model.
+# Outputs:
+#   - sf object with predicted values in column `pred`.
+
 get_grid_preds <- function(input_grid, spamm_model_fit) {
   # Convert grid to data frame
   grid_coords <- st_coordinates(input_grid)
@@ -538,6 +591,16 @@ get_grid_preds <- function(input_grid, spamm_model_fit) {
   grid_df$pred <- preds[,1]
   st_as_sf(grid_df, coords = c("lon", "lat"), crs = 4326)
 }
+
+# get_predictions_for_model
+# Purpose: Run spatial predictions for a district/marker using a fitted model.
+# Inputs:
+#   - dist: district name.
+#   - mrk: marker name.
+#   - model: fitted spaMM model.
+#   - grid_data: tibble with grid geometry per district.
+# Outputs:
+#   - tibble with x/y/value/district/marker columns, or NULL on failure.
 
 get_predictions_for_model <- function(dist, mrk, model, grid_data) {
   if(is.null(model)) return(NULL)
@@ -569,45 +632,5 @@ get_predictions_for_model <- function(dist, mrk, model, grid_data) {
   )
   
   return(pred_tibble)
-}
-
-# Mapping functions ----
-
-# Function to convert points to raster
-points_to_raster <- function(x, y, z, mask1, crop1) {
-  library(raster)
-  
-  # Create raster
-  r <- raster::rasterFromXYZ(data.frame(x = x, y = y, z = z), crs = st_crs(mask1)$proj4string)
-  
-  # Mask and crop
-  r <- raster::mask(r, as_Spatial(mask1))
-  r <- raster::crop(r, as_Spatial(crop1))
-  
-  return(r)
-}
-
-# Function to convert raster to tibble for ggplot
-raster_to_tibble <- function(raster_obj) {
-  as.data.frame(raster_obj, xy = TRUE) %>%
-    as_tibble() %>%
-    rename(value = 3)
-}
-
-empty_district_plot <- function(dist) {
-  ggplot() +
-    labs(title = dist) +
-    theme_void(base_size = 8) +
-    theme(
-      plot.title = element_text(size = 8, face = "bold", hjust = 0.5)
-    )
-}
-
-# Function to get country boundaries for a study
-get_country_boundaries <- function(country_name) {
-  library(rnaturalearth)
-  library(rnaturalearthdata)
-  
-  ne_countries(scale = "medium", country = country_name, returnclass = "sf")
 }
 
