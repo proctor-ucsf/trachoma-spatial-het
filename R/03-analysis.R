@@ -111,7 +111,6 @@ district_grids <- cluster_dat %>%
   distinct(district_shp)
 
 # Make a cluster for parallel processing
-n_cores <- max(1L, parallel::detectCores() - 1L)
 cl <- parallel::makeCluster(n_cores)
 
 parallel::clusterEvalQ(cl, {

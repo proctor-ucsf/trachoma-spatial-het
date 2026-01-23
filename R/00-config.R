@@ -1,34 +1,21 @@
-#--------------------------------------------
-#
 # 8-spatial-analysis/R/00-config.R
-#
-# Spatial distribution of trachoma serology
-#
-# Config file
-#
-#------------------------------------
+# Spatial distribution of trachoma serology: config file
 
 rm(list = ls())
 
+# Load libraries ----------------------------------------------------------
 
 library(tidyverse)
 library(stringr)
 library(parallel)
-library(knitr)
 
 ## Spatial
 
 library(sp)
 library(sf)
-library(raster)
 library(spaMM)
 library(gstat)
 library(spdep)
-
-library(countrycode)
-library(geodata)
-library(rnaturalearth)
-library(rnaturalearthdata)
 
 ## Plotting
 
@@ -39,16 +26,15 @@ library(ggspatial)
 library(viridis)
 library(paletteer)
 
+# Define global objects ---------------------------------------------------
+
+
 data_folder_path <- "/Users/ariktha/Library/CloudStorage/Box-Box/trachoma-endgame/Data/final-v5"
-output_folder_path <- here("8-spatial-analysis", "output")
 
 path_data_clean <- here("data", "clean")
-n_cores <- 6
+n_cores <- max(1L, parallel::detectCores() - 1L)
 
 proj_crs <- 32637  # WGS 84 / UTM zone 37N
-
-
-# Define global objects ---------------------------------------------------
 
 markers <- c(
   "pgp3" = "Pgp3",
@@ -62,6 +48,8 @@ studies_of_interest <- c("TCC-Ethiopia2019",
                          "TCC-Ethiopia2021",
                          "TCC-Amhara2022",
                          "TCC-Ethiopia2023")
+
+# District labels and coordinates for maps -------------------------------
 
 districts_tib <- tibble(
   district_shp = c(
