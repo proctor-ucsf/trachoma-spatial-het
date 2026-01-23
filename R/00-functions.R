@@ -12,7 +12,7 @@ collect_warnings <- function(expr) {
 
 # Moran's I ----
 
-compute_morans_i <- function(df, k = 5, nsim = 999) {
+compute_morans_i <- function(df, k = 5, nsim = 1000) {
   
   # Need at least k + 1 points
   if (nrow(df) <= k) {
