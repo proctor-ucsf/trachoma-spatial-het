@@ -18,9 +18,15 @@ eth3_shp <- st_read(here("data", "eth_admin_boundaries", "eth_admin3.shp"))
 
 dat <- dat_raw %>%
   filter(study_id %in% studies_of_interest) %>%
+  filter(age_years >= 1 & age_years <= 9) %>%
   # filter(district %in% districts_tib$districts) %>%
   rename(pgp3 = pgp3_pos,
-         ct694 = ct694_pos)
+         ct694 = ct694_pos) %>%
+  mutate(age_tf_flag = ifelse(age_years > 5 & age_years <= 9, TRUE, FALSE)) %>%
+  mutate(pcr = ifelse(age_tf_flag, NA, pcr),
+         pgp3 = ifelse(age_tf_flag, NA, pgp3),
+         ct694 = ifelse(age_tf_flag, NA, ct694)) 
+
 
 ## Cluster-level summaries ----
 
