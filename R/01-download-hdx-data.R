@@ -1,21 +1,13 @@
+library(here)
 
-# South Sudan admin boundaries
-### Map downloaded from https://data.humdata.org/dataset/cod-ab-ssd
+# Ethiopia admin boundaries
+### Map downloaded from https://data.humdata.org/dataset/cod-ab-eth
 
-ssd_shp_url <- "https://data.humdata.org/dataset/cdd62bd9-e442-4eac-9b44-cfee8bf79153/resource/4d768ab6-c322-4af4-8fbf-6cbb442812d3/download/ssd_admbnda_imwg_nbs_20230829_shp.zip"
+eth_shp_url <- "https://data.humdata.org/dataset/cb58fa1f-687d-4cac-81a7-655ab1efb2d0/resource/274872ef-5add-48f4-95a4-5ce162af7f3f/download/eth_admin_boundaries.shp.zip"
+eth_zip <- here("data", "eth_admin_boundaries.zip")
+eth_dir <- here("data", "eth_admin_boundaries")
 
-ssd_zip <- file.path(path_data_clean, "ssd_shapefiles.zip")
-ssd_dir <- file.path(path_data_clean, "ssd_shapefiles")
+download.file(eth_shp_url, destfile = eth_zip)
 
-if (!dir.exists(path_data_clean)) {
-  dir.create(path_data_clean, recursive = TRUE)
-}
-
-download.file(ssd_shp_url, destfile = ssd_zip)
-
-if (!dir.exists(ssd_dir)) {
-  dir.create(ssd_dir, recursive = TRUE)
-}
-
-unzip(zipfile = ssd_zip, exdir = ssd_dir)
+unzip(zipfile = eth_zip, exdir = eth_dir)
 
