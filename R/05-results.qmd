@@ -45,19 +45,33 @@ n_districts <- cluster_dat %>% distinct(district) %>% nrow()
 n_clusters <- cluster_dat %>% distinct(district, cluster_id) %>% nrow()
 ```
 
-There are a total of `r n_districts` districts with `r n_clusters` clusters in the included surveys in Amhara, Ethiopia. The number of clusters per district (and by marker) is summarized below:
+There are a total of `r n_districts` districts with `r n_clusters` clusters in the included surveys in Amhara, Ethiopia. The number of clusters per district by marker is summarized below:
 
 
 ```{r data-summary-2}
-cluster_dat %>%
-  distinct(district, cluster_id) %>%          
-  count(district, name = "n_clusters")
 
 cluster_dat %>%
   distinct(district, marker, cluster_id) %>%  
   count(district, marker, name = "n_clusters") %>%
   pivot_wider(names_from = marker, values_from = n_clusters, values_fill = 0)
 ```
+
+```{r}
+district_dat <- cluster_dat %>%
+  group_by(district, marker) %>%
+  summarise(n_tested = sum(n),
+            med_prev = median(prev, na.rm = TRUE)*100,
+            iqr_prev = IQR(prev, na.rm = TRUE)*100,
+            .groups = "drop") %>%
+  pivot_wider(names_from = marker,
+              values_from = c(n_tested, mean_prev, med_prev, iqr_prev),
+              values_fill = 0)
+
+district_dat
+
+write_csv(district_dat, here("figs", "district_summary_statistics.csv"))
+```
+
 
 # Moran's I Results
 
