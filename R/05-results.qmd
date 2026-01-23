@@ -72,7 +72,6 @@ district_dat
 write_csv(district_dat, here("figs", "district_summary_statistics.csv"))
 ```
 
-
 # Moran's I Results
 
 ```{r morans-key-results, message=FALSE, warning=FALSE, fig.width=7, fig.height=9}

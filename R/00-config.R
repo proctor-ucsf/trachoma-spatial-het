@@ -28,10 +28,9 @@ library(paletteer)
 
 # Define global objects ---------------------------------------------------
 
-
 data_folder_path <- "/Users/ariktha/Library/CloudStorage/Box-Box/trachoma-endgame/Data/final-v5"
 
-path_data_clean <- here("data", "clean")
+# path_data_clean <- here("data", "clean")
 n_cores <- max(1L, parallel::detectCores() - 1L)
 
 proj_crs <- 32637  # WGS 84 / UTM zone 37N

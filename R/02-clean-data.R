@@ -16,6 +16,8 @@ eth3_shp <- st_read(here("data", "eth_admin_boundaries", "eth_admin3.shp"))
 
 # Pre-process survey data ----
 
+# Use ages 1-9 for tf and 1-5 for pgp3 and pcr
+
 dat <- dat_raw %>%
   filter(study_id %in% studies_of_interest) %>%
   filter(age_years >= 1 & age_years <= 9) %>%
@@ -28,7 +30,7 @@ dat <- dat_raw %>%
          ct694 = ifelse(age_tf_flag, NA, ct694)) 
 
 
-## Cluster-level summaries ----
+## Cluster-level prevalence summaries ----
 
 cluster_dat <- dat %>%
   group_by(study_id, cluster_id, district) %>%
@@ -88,9 +90,13 @@ district_order <- cluster_dat_long %>%
   arrange(desc(median_prev)) %>%
   pull(district)
 
+# Add new line for district plot labels
+
 district_order_n <- gsub(" ", "\n", district_order)
 district_order_n <- recode(district_order_n,
                            "Debre\nBirhan\nTown" = "Debre Birhan\nTown")
+
+# Apply order to district lookup tibble and add colors
 
 districts_tib <- districts_tib %>%
   mutate(district_n = ifelse(district == "Debre Birhan Town",
@@ -100,6 +106,8 @@ districts_tib <- districts_tib %>%
          district_n = factor(district_n, levels = district_order_n, ordered = TRUE)) %>%
   arrange(district) %>%
   mutate(dist_color = viridis(n = nrow(.), option = "B", end = 0.9, direction = -1))
+
+# Apply order to cluster data
 
 cluster_dat_long <- cluster_dat_long %>%
   mutate(district_n = ifelse(district == "Debre Birhan Town",

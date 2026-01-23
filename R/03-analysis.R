@@ -15,12 +15,15 @@ amhara_shp <- readRDS(here("data", "clean", "amhara_shp.rds"))
 
 # Moran's I ----
 
+# Define values of k (number of nearest neighbors) to test
 k_grid <- c(4, 5, 6)
 
+# Wrapper to pass k to compute_morans_i
 compute_morans_i_k <- function(df, k) {
   compute_morans_i(df, k = k)
 }
 
+# Compute Moran's I for all district + marker + k combos
 morans_results <- cluster_dat %>%
   tidyr::crossing(k = k_grid) %>%
   group_by(district, marker, k) %>%
@@ -105,12 +108,13 @@ saveRDS(spatial_models, here("data", "clean", "spatial_models.rds"))
 
 ## Generate prediction grids and predictions ----
 
+# Create prediction grids for each district
 district_grids <- cluster_dat %>%
   left_join(districts_tib, by = "district") %>%
   filter(!is.na(district_shp)) %>%
   distinct(district_shp)
 
-# Make a cluster for parallel processing
+# Make and use a cluster for parallel processing of grid creation
 cl <- parallel::makeCluster(n_cores)
 
 parallel::clusterEvalQ(cl, {
