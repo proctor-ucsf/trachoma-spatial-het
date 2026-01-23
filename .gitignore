@@ -76,3 +76,7 @@ rsconnect/
 
 # Mac system files
 *.DS_Store
+
+# renv
+renv/library/
+renv/python/
