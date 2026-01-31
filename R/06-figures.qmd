@@ -43,7 +43,7 @@ morans_raw <- readRDS(here("data", "clean", "morans_i_results.rds"))
 spatial_preds <- readRDS(here("data", "clean", "spatial_preds.rds"))
 ```
 
-# Manuscript figures
+# Figure 1
 
 ```{r fig1a}
 
@@ -184,6 +184,8 @@ ggsave(here("figs", "fig1.png"), fig1,
        width = 10, height = 6, units = "in", dpi = 300)
 
 ```
+
+# Figures 2 and Supplementary figures 1, and 2
 
 ```{r prev-figs-setup, message=FALSE, warning=FALSE}
 
@@ -343,7 +345,9 @@ scale_bar <- ggspatial::annotation_scale(
   pad_x = unit(0.02, "npc")
 )
 
-build_spatial_figure_for_marker <- function(marker_name) {
+build_spatial_figure_for_marker <- function(marker_name, 
+                                            pal_name = "viridis",
+                                            prev_lims = c(0, 100)) {
 
   # marker-specific objects
   morans_marker <- get_morans_for_marker(marker_name)
@@ -378,8 +382,8 @@ build_spatial_figure_for_marker <- function(marker_name) {
       ) +
       coord_for_dist(dist) +
       scale_fill_viridis_c(
-        option = "D", direction = 1,
-        limits = c(0, 100), breaks = seq(0, 100, 25),
+        option = pal_name, direction = 1,
+        limits = prev_lims, breaks = seq(prev_lims[1], prev_lims[2], prev_lims[2] / 4),
         name = name_str,
         guide = guide_colorbar(
           direction = "horizontal", label.position = "bottom",
@@ -387,7 +391,7 @@ build_spatial_figure_for_marker <- function(marker_name) {
         )
       ) +
       scale_size_continuous(
-        limits = c(0, 100), range = c(0.5, 6),
+        limits = prev_lims, range = c(0.5, 6),
         name = name_str,
         guide = guide_legend(
           direction = "horizontal", label.position = "bottom",
@@ -426,8 +430,8 @@ build_spatial_figure_for_marker <- function(marker_name) {
       ) +
       coord_for_dist(dist) +
       scale_fill_viridis_c(
-        option = "D", direction = 1,
-        limits = c(0, 100), breaks = seq(0, 100, 25),
+        option = pal_name, direction = 1,
+        limits = prev_lims, breaks = seq(prev_lims[1], prev_lims[2], prev_lims[2] / 4),
         name = name_str,
         guide = guide_colorbar(
           direction = "horizontal", label.position = "bottom",
@@ -532,7 +536,7 @@ fig3 <- fig3_obj$fig
 fig3
 
 # Fig 4 (Ct)
-fig4_obj <- build_spatial_figure_for_marker("PCR")
+fig4_obj <- build_spatial_figure_for_marker("PCR", prev_lims = c(0, 40), pal_name = "G")
 fig4 <- fig4_obj$fig
 fig4
 
@@ -541,3 +545,8 @@ ggsave(here("figs", "fig2.png"), fig2, width = 9, height = 8, units = "in", dpi 
 ggsave(here("figs", "supp-fig1-TF.png"), fig3, width = 9, height = 8, units = "in", dpi = 300, bg = "white")
 ggsave(here("figs", "supp-fig2-pcr.png"), fig4, width = 9, height = 8, units = "in", dpi = 300, bg = "white")
 ```
+
+```{r}
+
+```
+
