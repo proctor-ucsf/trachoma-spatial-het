@@ -499,6 +499,25 @@ fit_spatial_model <- function(dist, mrk, df) {
     }
   )
   
+  warn_binomial <- character(0)
+  fit_binomial <- tryCatch(
+      spaMM::fitme(
+        cbind(pos, n - pos) ~ 1 + Matern(1 | lon + lat),
+        data = subset_data,
+        family = binomial(link = "logit")
+      ),
+      warning = function(w) {
+        # warn_binomial <<- c(warn_binomial, conditionMessage(w))
+        # invokeRestart("muffleWarning")
+        warning(sprintf("Binomial spatial model warned for %s - %s: %s", dist, mrk, w$message))
+        NULL
+      },
+    error = function(e) {
+      warning(sprintf("Binomial spatial model failed for %s - %s: %s", dist, mrk, e$message))
+      NULL
+    }
+  )
+  
   warn_simple <- character(0)
   fit_simple <- tryCatch(
       spaMM::fitme(
@@ -519,14 +538,18 @@ fit_spatial_model <- function(dist, mrk, df) {
   )
   
   aic_spatial <- if (!is.null(fit_spatial)) AIC(fit_spatial) else NA_real_
+  aic_binomial <- if (!is.null(fit_binomial)) AIC(fit_binomial) else NA_real_
   aic_simple  <- if (!is.null(fit_simple))  AIC(fit_simple)  else NA_real_
   
   list(
     spatial_model = fit_spatial,
+    binomial_model = fit_binomial,
     simple_model  = fit_simple,
     aic_spatial   = aic_spatial,
+    aic_binomial  = aic_binomial,
     aic_simple    = aic_simple,
     warnings_spatial = warn_spatial,
+    warnings_binomial = warn_binomial,
     warnings_simple  = warn_simple,
     error = NULL
   )

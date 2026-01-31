@@ -64,7 +64,7 @@ district_dat <- cluster_dat %>%
             iqr_prev = IQR(prev, na.rm = TRUE)*100,
             .groups = "drop") %>%
   pivot_wider(names_from = marker,
-              values_from = c(n_tested, mean_prev, med_prev, iqr_prev),
+              values_from = c(n_tested, med_prev, iqr_prev),
               values_fill = 0)
 
 district_dat
@@ -213,6 +213,10 @@ variogram_plots_by_marker
 
 # Spatial Model Results
 
+## Model fit summaries
+
+### Gaussian and intercept-only models
+
 ```{r spatial-model-summary, message=FALSE, warning=FALSE}
 
 table(spatial_models$fit_yn)
@@ -244,12 +248,25 @@ ggplot(aic_summary) +
 
 ```
 
+### Binomial models
+
+```{r spatial-model-binomial-summary, message=FALSE, warning=FALSE}
+
+spatial_models %>%
+  dplyr::select(district, marker, binomial_fit_yn) %>%
+  ungroup() %>%
+  pivot_wider(names_from = marker, values_from = binomial_fit_yn)
+
+```
+
 ## Prediction Maps
 
 ```{r plot-prediction-layers, message=FALSE, warning=FALSE, fig.height=6, fig.width=9}
 
 make_marker_pred_patchwork <- function(marker,
                                        marker_label = marker,
+                                       preds_df,
+                                       subtitle_str = NULL,
                                        ncol = 4,
                                        limits = c(0, 1)) {
 
@@ -264,7 +281,7 @@ make_marker_pred_patchwork <- function(marker,
       filter(adm3_name == dist_shp)
 
     # predictions for this district+marker
-    pred_dist <- preds_all %>%
+    pred_dist <- preds_df %>%
       filter(district == dist, marker == !!marker) %>%
       mutate(value = pmin(pmax(value, 0), 1))  # clamp to limits
 
@@ -278,20 +295,22 @@ make_marker_pred_patchwork <- function(marker,
       coord_sf() +
       theme_minimal(base_size = 10) +
       labs(title = dist, x = NULL, y = NULL) +
+      # ggspatial::annotation_scale(location = "br", width_hint = 0.3) +
       theme(
         axis.text = element_blank(),
         axis.ticks = element_blank()
-      ) +
-      ggspatial::annotation_scale(location = "br", width_hint = 0.3)
+      )
   })
 
   pred_plot <- wrap_plots(plot_list, ncol = ncol) +
-    plot_layout(guides = "collect") +
-    plot_annotation(title = paste0("Predicted ", marker_label, " prevalence by district")) &
+    plot_layout(guides = "collect", 
+                widths = rep(1, ncol), heights = rep(1, ceiling(length(plot_list)/ncol))) +
+    plot_annotation(title = paste0("Predicted ", marker_label, " prevalence by district"),
+                    subtitle = subtitle_str) &
     theme(legend.position = "bottom")
   
   ggsave(
-    here("figs", paste0("prediction_maps_", marker, ".png")),
+    here("figs", paste0("pred_maps_", marker, "_", subtitle_str, ".png")),
     pred_plot,
     width = 300, height = 200, units = "mm", dpi = 300
   )
@@ -316,8 +335,70 @@ preds_all <- spatial_preds %>%
 marker_levels <- c("Pgp3", "TF", "PCR")
 names(marker_levels) <- marker_levels  # labels = values
 
-pred_patchworks <- imap(marker_levels, ~ make_marker_pred_patchwork(marker = .y, marker_label = .x))
+pred_patchworks <- imap(marker_levels, 
+                        ~ make_marker_pred_patchwork(marker = .y, marker_label = .x, preds_df = preds_all, subtitle_str = "gaussian_lik"))
 
-pred_patchworks
+# pred_patchworks
+
+```
+
+```{r plot-binom-pred-layers, message=FALSE, warning=FALSE, fig.height=6, fig.width=9}
+
+binom_preds <- spatial_preds %>%
+  transmute(
+    district,
+    marker,
+    binomial_predictions = map(binomial_predictions, ~ {
+      if (is.null(.x)) {
+        tibble(x = numeric(), y = numeric(), value = numeric())
+      } else {
+        .x %>% dplyr::select(x, y, value)
+      }
+    })
+  ) %>%
+  unnest(binomial_predictions)
+
+binom_pred_patchworks <- imap(marker_levels, 
+                              ~ make_marker_pred_patchwork(marker = .y, marker_label = .x, preds_df = binom_preds, subtitle_str = "binomial_lik"))
+
+# binom_pred_patchworks
+
+```
+```{r check-pred-diffs, message=FALSE, warning=FALSE, fig.height=6, fig.width=11}
+
+pgp3_pred_comp <- (pred_patchworks$Pgp3 | plot_spacer() | binom_pred_patchworks$Pgp3) +
+  plot_annotation(title = "Predicted Pgp3 prevalence: gaussian (left) vs binomial (right)") +
+  plot_layout(guides = "collect", widths = c(1, 0.1, 1)) &
+  theme(legend.position = "bottom")
+
+tf_pred_comp <- (pred_patchworks$TF | plot_spacer() | binom_pred_patchworks$TF) +
+  plot_annotation(title = "Predicted TF prevalence: gaussian (left) vs binomial (right)") +
+  plot_layout(guides = "collect", widths = c(1, 0.1, 1))
+
+pcr_pred_comp <- (pred_patchworks$PCR | plot_spacer() | binom_pred_patchworks$PCR) +
+  plot_annotation(title = "Predicted PCR prevalence: gaussian (left) vs binomial (right)") +
+  plot_layout(guides = "collect", widths = c(1, 0.1, 1))
+
+pgp3_pred_comp
+tf_pred_comp
+pcr_pred_comp
+
+ggsave(
+  here("figs", "pred_comparisons_pgp3.png"),
+  pgp3_pred_comp,
+  width = 11.5, height = 6, units = "in"
+)
+
+ggsave(
+  here("figs", "pred_comparisons_tf.png"),
+  tf_pred_comp,
+  width = 11.5, height = 6, units = "in"
+)
+
+ggsave(
+  here("figs", "pred_comparisons_pcr.png"),
+  pcr_pred_comp,
+  width = 11.5, height = 6, units = "in"
+)
 
 ```
