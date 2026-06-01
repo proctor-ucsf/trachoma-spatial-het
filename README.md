@@ -12,22 +12,6 @@ This repository contains an R-based workflow that:
 - Generates prediction grids and district-level spatial predictions.
 - Produces tables, maps, and figures as Quarto reports.
 
-## Repository structure
-
-- `R/00-config.R`: Global configuration (libraries, paths, study list, markers,
-  CRS, district metadata). Adjust this first to match your local data paths.
-- `R/00-functions.R`: Shared helper functions (spatial statistics, variograms,
-  model fitting, predictions).
-- `R/01-download-hdx-data.R`: Optional script to download and unzip boundary
-  shapefiles.
-- `R/02-clean-data.R`: Data ingestion and cleaning; produces cluster-level
-  summaries and processed shapefiles.
-- `R/03-analysis.R`: Spatial analysis (Moran's I, variograms, spatial model
-  fitting, prediction grid creation).
-- `R/04-visualize-data.qmd`: Exploratory plots and maps.
-- `R/05-results.qmd`: Result-focused tables and summaries.
-- `R/06-figures.qmd`: Publication-ready figures.
-
 ## Inputs & outputs
 
 **Inputs**
@@ -51,12 +35,12 @@ Run scripts in order after updating paths in `R/00-config.R`:
    review the markers and study lists.
 
 2. **Optional: download boundary data**  
-   `R/01-download-hdx-data.R` downloads an example shapefile bundle from HDX
+   `R/01-download-hdx-data.R` downloads the shapefile bundle from HDX
    and unzips it into `data/clean/`.
 
 3. **Clean and prepare datasets**  
    `R/02-clean-data.R`:
-   - Loads harmonized survey data and Ethiopia admin boundaries.
+   - Loads harmonized survey data and Ethiopia administrative boundaries.
    - Filters to the target studies and ages.
    - Computes cluster- and district-level summaries.
    - Writes cleaned data and shapefiles to `data/clean/`.
@@ -72,7 +56,7 @@ Run scripts in order after updating paths in `R/00-config.R`:
    Render the Quarto files:
    - `R/04-visualize-data.qmd`: exploratory plots and maps.
    - `R/05-results.qmd`: summary results.
-   - `R/06-figures.qmd`: final figures.
+   - `R/06-figures.qmd`: final manuscript figures.
 
 ## Notes
 
