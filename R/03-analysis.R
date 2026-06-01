@@ -88,10 +88,13 @@ spatial_models_fit <- variograms_meta %>%
          marg_aic_spatial   = map(models, ~ null_to_na_real(.x$aic_spatial[[1]])),
          marg_aic_binomial  = map(models, ~ null_to_na_real(.x$aic_binomial[[1]])),
          marg_aic_simple    = map(models, ~ null_to_na_real(.x$aic_simple[[1]])),
+         lambda_spatial = map(models, ~ null_to_na_real(.x$lambda_spatial[[1]])),
+         lambda_binomial = map(models, ~ null_to_na_real(.x$lambda_binomial[[1]])),
          error_type = map_chr(models, ~if(!is.null(.x$error)) .x$error else NA_character_)) 
 
 spatial_models <- spatial_models_fit %>%
-  mutate(across(starts_with("marg_aic"), ~unlist(.x))) %>%
+  mutate(across(starts_with("marg_aic"), ~unlist(.x)),
+         across(starts_with("lambda"), ~unlist(.x))) %>%
   mutate(spatial_fit_yn = ifelse(!map_lgl(spatial_model, is.null), "yes", "no"),
          binomial_fit_yn = ifelse(!map_lgl(binomial_model, is.null), "yes", "no"),
          simple_fit_yn = ifelse(!map_lgl(simple_model, is.null), "yes", "no")) %>%

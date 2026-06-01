@@ -541,6 +541,9 @@ fit_spatial_model <- function(dist, mrk, df) {
   aic_binomial <- if (!is.null(fit_binomial)) AIC(fit_binomial) else NA_real_
   aic_simple  <- if (!is.null(fit_simple))  AIC(fit_simple)  else NA_real_
   
+  lambda_spatial <- if (!is.null(fit_spatial)) fit_spatial$lambda else NA_real_
+  lambda_binomial <- if (!is.null(fit_binomial)) fit_binomial$lambda else NA_real_
+  
   list(
     spatial_model = fit_spatial,
     binomial_model = fit_binomial,
@@ -548,6 +551,8 @@ fit_spatial_model <- function(dist, mrk, df) {
     aic_spatial   = aic_spatial,
     aic_binomial  = aic_binomial,
     aic_simple    = aic_simple,
+    lambda_spatial = lambda_spatial,
+    lambda_binomial = lambda_binomial,
     warnings_spatial = warn_spatial,
     warnings_binomial = warn_binomial,
     warnings_simple  = warn_simple,
