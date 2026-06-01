@@ -107,14 +107,18 @@ spatial_models <- spatial_models_fit %>%
          pref_model = case_when(is.na(marg_aic_diff) ~ "neither",
                                 marg_aic_diff < -2 ~ "spatial",
                                 marg_aic_diff > 2 ~ "simple",
-                                 TRUE ~ "tie")) %>%
-  mutate(lambda = spatial_model$lambda,
-         nu = spatial_model$corrPars[[1]]$nu,
-         rho = spatial_model$corrPars[[1]]$rho)
+                                 TRUE ~ "tie"),
+         icc = lambda_binomial / (lambda_binomial + (pi^2 / 3)))
 
-# Save spatial models
+# For the ICC calculation above:
+# sigma^2 is the spatial variance from Matern random effect and 
+# pi^2/3 is the fixed latent-scale residual variance for binomial-logit models
+
+# Save spatial models and ICCs
 
 saveRDS(spatial_models, here("data", "clean", "spatial_models.rds"))
+saveRDS(spatial_models %>% dplyr::select(district, marker, icc), 
+        here("data", "clean", "icc_results.rds"))
 
 ## Generate prediction grids and predictions ----
 
@@ -212,3 +216,5 @@ spatial_models <- spatial_models %>%
 tictoc::toc()
 
 saveRDS(spatial_models, here("data", "clean", "spatial_preds.rds"))
+
+
