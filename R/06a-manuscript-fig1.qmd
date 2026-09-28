@@ -1,0 +1,201 @@
+--- 
+title: "Spatial Analysis of Trachoma Markers: Manuscript Figure 1" 
+date: "r Sys.Date()" 
+format: 
+  html: 
+    toc: true 
+    code-fold: true 
+    toc-depth: 3 
+    fig-width: 8 
+    fig-height: 6 
+    embed-resources: true 
+  editor: 
+    markdown: 
+      wrap: 72 
+execute: 
+  cache: false 
+  warning: false 
+---
+
+
+```{r setup, include=FALSE}
+rm(list = ls())
+
+library(here)
+library(tidyverse)
+library(cowplot)
+library(sf)
+library(ggspatial)
+library(units)
+```
+
+```{r load-data}
+source(here("R", "00-config.R"))
+
+# load(here("output", "figs", "figure_inputs.rda"))
+cluster_dat <- readRDS(here("data", "clean", "cluster_dat.rds"))
+districts_tib <- readRDS(here("data", "clean", "districts_tib.rds"))
+amhara_shp <- readRDS(here("data", "clean", "amhara_shp.rds"))
+
+eth1_shp <- st_read(here("data", "eth_admin_boundaries", "eth_admin1.shp"))
+```
+
+# Figure 1
+
+```{r fig1a}
+
+amhara_shp_plot <- amhara_shp %>%
+  left_join(
+    districts_tib %>%
+      dplyr::select(district_shp, dist_color),
+    by = join_by(adm3_name == district_shp)
+  ) %>%
+  replace_na(list(dist_color = "grey80"))
+
+woreta_lat <- amhara_shp_plot %>%
+  dplyr::filter(adm3_name == "Woreta town") %>%
+  pull(center_lat)
+
+woreta_lon <- amhara_shp_plot %>%
+  dplyr::filter(adm3_name == "Woreta town") %>%
+  pull(center_lon)
+
+eth_map <- ggplot() +
+  geom_sf(data = eth1_shp, fill = "white", color = "grey60") +
+  geom_sf(data = amhara_shp_plot, aes(fill = adm3_name), size = 0.8, color = NA) +
+  theme_minimal(base_size = 10) +
+  labs(x = "Longitude", y = "Latitude") +
+  # theme(legend.position.inside = c(0.85, 0.75),
+  #       legend.position = "inside",
+  #       legend.title = element_blank(),
+  #       legend.background = element_rect(fill = "white", color = NA)) +
+  theme(axis.title = element_blank()) +
+  scale_fill_manual(breaks = amhara_shp_plot$adm3_name, 
+                    values = amhara_shp_plot$dist_color) +
+  guides(fill = "none", x = "none", y = "none") +
+  annotation_scale(location = "br", 
+                   bar_cols = c("grey50", "white"), 
+                   line_col = "grey40",
+                   text_col = "grey40",
+                   width_hint = 0.3) 
+
+am_map <- ggplot() +
+  geom_sf(data = amhara_shp_plot, aes(fill = survey_bin), color = "grey60") +
+  geom_point(data = cluster_dat,
+             aes(x = lon, y = lat, color = district), 
+             alpha = 0.7, size = 0.5) +
+  geom_label_repel(
+    data = districts_tib,
+    aes(x = lon_lbl, y = lat_lbl, label = district),
+    size = 3,
+    label.size = 0.2,
+    min.segment.length = 0,
+    segment.size = 0.3,
+    segment.color = "black",
+    box.padding = 0,
+    point.padding = 0,
+    force = 0,
+    seed = 123
+  ) +
+  geom_segment(aes(x = woreta_lon - 0.12, y = woreta_lat, 
+                   xend = woreta_lon, yend = woreta_lat)) +
+  scale_color_manual(breaks = districts_tib$district, 
+                     values = districts_tib$dist_color, 
+                     guide = "none") +
+  coord_sf() +
+  theme_minimal(base_size = 10) +
+  labs(title = dist, x = "Longitude", y = "Latitude") +
+  # xlim(c(36, 40)) +
+  ylim(c(8.2, NA)) +
+  guides(fill = "none") +
+  scale_fill_manual(breaks = c(TRUE, FALSE), values = c("white", "grey70")) +
+  ggspatial::annotation_scale(location = "br", width_hint = 0.3)
+
+am_map
+
+eth_map_bordered <-
+  eth_map +
+  theme(
+    panel.background = element_rect(fill = "white", colour = "black", linewidth = 0.4),
+    panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.4)
+  )
+
+final_map <-
+  am_map +
+  inset_element(
+    eth_map_bordered,
+    left = 0, bottom = 0,
+    right = 0.60, top = 0.32,
+    ignore_tag = TRUE
+  )
+
+final_map
+```
+
+```{r fig1b}
+
+# tabone_dat <- cluster_dat %>%
+#   rename(district_n = district) %>%
+#   mutate(district = gsub("\n", " ", district_n))
+
+n_text <- cluster_dat %>%
+  group_by(district, district_n, marker) %>%
+  summarise(total_indiv = sum(n),
+            total_clusters = n_distinct(cluster_id),
+            n_zero = sum(pos==0),
+            mean_prev = mean(prev, na.rm = TRUE),
+            sd_prev = sd(prev, na.rm = TRUE),
+            med_prev = median(prev, na.rm = TRUE),
+            .groups = "drop") %>%
+  mutate(txt = paste0("n indiv = ", total_indiv, "\nzero prev clusters = ", n_zero,
+                      "/", total_clusters, "\nMean (SD) prev = ", round(mean_prev, 1), 
+                      " (", round(sd_prev, 1), ") %"),
+         txt2 = paste0("N = ", total_indiv))
+
+# n_text <- n_text %>%
+#   rename(district_n = district) %>%
+#   mutate(district = gsub("\n", " ", district_n))
+# 
+# tabone_dat$district_n <- fct_recode(tabone_dat$district_n, "Debre Birhan\nTown" = "Debre\nBirhan\nTown")
+# n_text$district_n <- fct_recode(n_text$district_n, "Debre Birhan\nTown" = "Debre\nBirhan\nTown")
+
+cluster_dat <- cluster_dat %>%
+  mutate(marker = factor(marker, levels = c("Pgp3", "PCR", "TF"), ordered = TRUE))
+
+bplot <- ggplot(data = cluster_dat) +
+  geom_boxplot(aes(x = prev_perc, color = district, y = 1), outliers = FALSE) +
+  geom_point(aes(x = prev_perc, y = 1, color = district), 
+             position = position_jitter(width = 0, height = 0.1), 
+             size = 0.7, alpha = 0.6) +
+  geom_text(data = n_text, x = Inf, y = -Inf, 
+            aes(label = txt2),
+            hjust = 1, vjust = 0, size = 2.5) +
+  facet_grid(district_n ~ marker, switch = "y") +
+  theme_minimal(base_size = 10) +
+  theme(axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "none",
+        strip.text.y.left = element_text(angle = 0)) +
+  scale_color_manual(breaks = districts_tib$district, values = districts_tib$dist_color) +
+  scale_x_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 25),
+                     name = "Prevalence (%)")
+
+bplot
+
+```
+
+```{r fig1}
+fig1 <- final_map + bplot +
+  plot_annotation(
+    tag_levels = "A"
+  ) &
+  theme(
+    plot.tag = element_text(size = 12)
+  )
+
+fig1
+
+ggsave(here("figs", "manuscript", "fig1.png"), fig1, 
+       width = 10, height = 6, units = "in", dpi = 300)
+
+```

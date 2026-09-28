@@ -76,35 +76,49 @@ saveRDS(fit_results, here("data", "clean", "variograms.rds"))
 
 ## Fit spatial models for all district + marker combos ----
 
+null_to_na_real <- function(x) {
+  if (is.null(x) || length(x) == 0) NA_real_ else as.numeric(x)
+}
+
 spatial_models_fit <- variograms_meta %>%
   mutate(models = pmap(list(district, marker), ~fit_spatial_model(..1, ..2, cluster_dat)),
          spatial_model = map(models, ~.x$spatial_model),
+         binomial_model = map(models, ~.x$binomial_model),
          simple_model = map(models, ~.x$simple_model),
-         marg_aic_spatial = map(models, ~.x$aic_spatial[[1]]),
-         marg_aic_simple = map(models, ~.x$aic_simple[[1]]),
+         marg_aic_spatial   = map(models, ~ null_to_na_real(.x$aic_spatial[[1]])),
+         marg_aic_binomial  = map(models, ~ null_to_na_real(.x$aic_binomial[[1]])),
+         marg_aic_simple    = map(models, ~ null_to_na_real(.x$aic_simple[[1]])),
+         lambda_spatial = map(models, ~ null_to_na_real(.x$lambda_spatial[[1]])),
+         lambda_binomial = map(models, ~ null_to_na_real(.x$lambda_binomial[[1]])),
          error_type = map_chr(models, ~if(!is.null(.x$error)) .x$error else NA_character_)) 
 
 spatial_models <- spatial_models_fit %>%
-  mutate(across(c(starts_with("marg_aic")), ~unlist(.x))) %>%
+  mutate(across(starts_with("marg_aic"), ~unlist(.x)),
+         across(starts_with("lambda"), ~unlist(.x))) %>%
   mutate(spatial_fit_yn = ifelse(!map_lgl(spatial_model, is.null), "yes", "no"),
-         simple_fit_yn = ifelse(!map_lgl(simple_model, is.null), "yes", "no"),
-         fit_yn = case_when(
-           spatial_fit_yn == "yes" & simple_fit_yn == "yes" ~ "both fit",
-           simple_fit_yn == "yes" ~ "only simple fit",
-           spatial_fit_yn == "yes" ~ "only spatial fit",
-           TRUE ~ "neither fit"))  %>%
+         binomial_fit_yn = ifelse(!map_lgl(binomial_model, is.null), "yes", "no"),
+         simple_fit_yn = ifelse(!map_lgl(simple_model, is.null), "yes", "no")) %>%
+  mutate(fit_yn = case_when(
+    spatial_fit_yn == "yes" & simple_fit_yn == "yes" ~ "both fit",
+    simple_fit_yn == "yes" ~ "only simple fit",
+    spatial_fit_yn == "yes" ~ "only spatial fit",
+    TRUE ~ "neither fit"))  %>%
   mutate(marg_aic_diff = marg_aic_spatial - marg_aic_simple,
          pref_model = case_when(is.na(marg_aic_diff) ~ "neither",
                                 marg_aic_diff < -2 ~ "spatial",
                                 marg_aic_diff > 2 ~ "simple",
-                                 TRUE ~ "tie")) %>%
-  mutate(lambda = spatial_model$lambda,
-         nu = spatial_model$corrPars[[1]]$nu,
-         rho = spatial_model$corrPars[[1]]$rho)
+                                 TRUE ~ "tie"),
+         icc = lambda_binomial / (lambda_binomial + (pi^2 / 3)))
 
-# Save spatial models
+# For the ICC calculation above:
+# sigma^2 is the spatial variance from Matern random effect and 
+# pi^2/3 is the fixed latent-scale residual variance for binomial-logit models
+
+# Save spatial models and ICCs
 
 saveRDS(spatial_models, here("data", "clean", "spatial_models.rds"))
+saveRDS(spatial_models %>% dplyr::select(district, marker, icc), 
+        here("data", "clean", "icc_results.rds"))
 
 ## Generate prediction grids and predictions ----
 
@@ -157,18 +171,50 @@ district_grids <- district_grids %>%
 
 ## Generate predictions for each district + marker combo ----
 
-# Get predictions for all models
+# Get predictions for spatial model 
 
-tictoc::tic("Generate predictions for all spatial models")
+tictoc::tic("Generate predictions for spatial model")
+
+pred_list <- mclapply(
+  X = seq_len(nrow(spatial_models)),
+  FUN = function(i) {
+    get_predictions_for_model(
+      spatial_models$district[[i]],
+      spatial_models$marker[[i]],
+      spatial_models$spatial_model[[i]],
+      district_grids
+    )
+  },
+  mc.cores = n_cores
+)
 
 spatial_models <- spatial_models %>%
-  mutate(
-    predictions = pmap(
-      list(district, marker, spatial_model),
-      ~get_predictions_for_model(..1, ..2, ..3, district_grids)
+  mutate(predictions = pred_list)
+
+tictoc::toc()
+
+# Get predictions for binomial model 
+
+tictoc::tic("Generate predictions for binomial model")
+
+binom_pred_list <- mclapply(
+  X = seq_len(nrow(spatial_models)),
+  FUN = function(i) {
+    get_predictions_for_model(
+      spatial_models$district[[i]],
+      spatial_models$marker[[i]],
+      spatial_models$binomial_model[[i]],
+      district_grids
     )
-  )
+  },
+  mc.cores = n_cores
+)
+
+spatial_models <- spatial_models %>%
+  mutate(binomial_predictions = binom_pred_list)
 
 tictoc::toc()
 
 saveRDS(spatial_models, here("data", "clean", "spatial_preds.rds"))
+
+
