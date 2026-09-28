@@ -1,6 +1,14 @@
 Analyze sub-district spatial heterogeneity in trachoma markers (Pgp3, TF, PCR)
 in Amhara, Ethiopia using survey data and spatial modeling.
 
+This repository includes code used to run analyses in the paper:
+Srivathsan et al. 2026
+Subdistrict Spatial Heterogeneity in Trachoma Seroprevalence as Populations Approach Elimination
+_The Journal of Infectious Diseases_, jiag375, https://doi.org/10.1093/infdis/jiag375
+
+The repository is mirrored and permanently archived through the Open Science Framework:
+https://osf.io/tbfhm
+
 ## Overview
 
 This repository contains an R-based workflow that:
